@@ -7,6 +7,7 @@ from srs.domain.errors import NotFound
 from srs.domain.item_codec import decode_item_data
 from srs.domain.item_codec import encode_item_data
 from srs.domain.item_data import ItemData
+from srs.domain.item_keys import lookup_keys
 from srs.domain.kinds import ItemKind
 
 
@@ -78,7 +79,8 @@ def items_by_lookup_keys(conn: sqlite3.Connection, language: str, kind: ItemKind
         return []
     placeholders = ",".join("?" * len(keys))
     rows = conn.execute(
-        f"SELECT * FROM items WHERE deleted = 0 AND language = ? AND kind = ? AND lookup_key IN ({placeholders})",
+        "SELECT DISTINCT items.* FROM items JOIN item_keys ON item_keys.item_id = items.id "
+        f"WHERE items.deleted = 0 AND items.language = ? AND items.kind = ? AND item_keys.key IN ({placeholders})",
         [language, kind, *keys],
     )
     return [_from_row(r) for r in rows]
@@ -123,3 +125,8 @@ def upsert_item(conn: sqlite3.Connection, item: Item) -> None:
             item.seq,
         ),
     )
+    conn.execute("DELETE FROM item_keys WHERE item_id = ?", (item.id,))
+    if not item.deleted:
+        conn.executemany(
+            "INSERT INTO item_keys (item_id, key) VALUES (?, ?)", [(item.id, k) for k in lookup_keys(item.data)]
+        )

@@ -8,9 +8,12 @@ from srs.domain.errors import InvalidRequest
 from srs.render.context import RenderValue
 from srs.repo.templates import Template
 
+# Shown next to the lemma by the default templates, so left out of the features list.
+_FEATURES_SHOWN_ELSEWHERE = frozenset({"article"})
+
 
 def _features(value: dict[str, str]) -> str:
-    return " · ".join(v for v in value.values() if v)
+    return " · ".join(v for k, v in value.items() if v and k not in _FEATURES_SHOWN_ELSEWHERE)
 
 
 def _make_env() -> SandboxedEnvironment:

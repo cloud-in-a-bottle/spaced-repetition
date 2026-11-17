@@ -33,6 +33,12 @@ function parseFeatures(text) {
 }
 const formatFeatures = (f) => Object.entries(f ?? {}).map(([k, v]) => `${k}=${v}`).join("\n");
 
+function alternativesField(obj) {
+  return field("Other spellings", h("input", { value: obj.alternatives.join(", "),
+    oninput: (e) => (obj.alternatives = e.target.value.split(",").map((t) => t.trim()).filter(Boolean)) }),
+    "comma separated; other apps' lookups match these too");
+}
+
 function field(label, input, hint) {
   return h("label.field", {}, h("span.field-label", {}, label), input, hint ? h("span.muted.field-hint", {}, hint) : null);
 }
@@ -47,8 +53,8 @@ function blankItem(schema) {
     deck_id: recall(LAST_DECK_KEY),
     language: recall(LAST_LANGUAGE_KEY) ?? "",
     tags: [],
-    lexeme: { lemma: "", pos: schema.parts_of_speech[0], gloss: "", features: {}, notes: "" },
-    form: { lexeme_id: carry.lexemeId, form: "", features: {}, gloss: "", notes: "" },
+    lexeme: { lemma: "", pos: schema.parts_of_speech[0], gloss: "", features: {}, notes: "", alternatives: [] },
+    form: { lexeme_id: carry.lexemeId, form: "", features: {}, gloss: "", notes: "", alternatives: [] },
     phrase: { text: "", translation: "", notes: "", lexeme_ids: [] },
     fact: { front: "", back: "", notes: "" },
     cards: null,
@@ -91,6 +97,7 @@ export async function itemEditorView(itemId) {
               schema.parts_of_speech.map((p) => h("option", { value: p, selected: p === item.lexeme.pos }, p))),
           ),
           field("Meaning / gloss", h("input", { ...bind(item.lexeme, "gloss"), required: true })),
+          alternativesField(item.lexeme),
           field("Features", h("textarea", { rows: 2, value: formatFeatures(item.lexeme.features),
             oninput: (e) => (item.lexeme.features = parseFeatures(e.target.value)) }), "one per line, eg gender=feminine"),
           field("Notes", h("textarea", { rows: 2, ...bind(item.lexeme, "notes") })),
@@ -99,6 +106,7 @@ export async function itemEditorView(itemId) {
         return [
           lexemePicker(),
           field("Form", h("input", { ...bind(item.form, "form"), required: true })),
+          alternativesField(item.form),
           field("Features", h("textarea", { rows: 4, value: formatFeatures(item.form.features),
             oninput: (e) => (item.form.features = parseFeatures(e.target.value)) }),
             "one per line, eg tense=present, person=1st, number=singular"),

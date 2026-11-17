@@ -94,3 +94,23 @@ def test_owner_api_rejects_non_owner(tmp_path) -> None:  # type: ignore[no-untyp
     with TestClient(app=app) as c:
         assert c.get("/api/decks").status_code == 401
         assert c.get("/api/decks", headers={"X-OpenHost-Is-Owner": "true"}).status_code == 200
+
+
+def test_lookup_matches_alternatives(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    lx = add_lexeme(client, deck_id, "salir", "to leave")
+    r = client.post(
+        "/api/items",
+        json={
+            "deck_id": deck_id,
+            "kind": "form",
+            "form": {
+                "lexeme_id": lx["id"],
+                "form": "salieran",
+                "alternatives": ["saliesen"],
+                "features": {"mood": "subjunctive", "tense": "imperfect"},
+            },
+        },
+    )
+    assert r.status_code == 201, r.text
+    [res] = _lookup(client, ["Saliesen"], _service_headers("knowledge:read")).json()["results"]
+    assert res["matches"][0]["matched_form_id"] == r.json()["id"]

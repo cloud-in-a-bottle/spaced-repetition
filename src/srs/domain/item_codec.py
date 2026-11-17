@@ -36,10 +36,16 @@ def decode_item_data(kind: ItemKind, raw: str) -> ItemData:
                 gloss=d["gloss"],
                 features=d["features"],
                 notes=d["notes"],
+                alternatives=d.get("alternatives", []),
             )
         case ItemKind.FORM:
             return FormData(
-                lexeme_id=d["lexeme_id"], form=d["form"], features=d["features"], gloss=d["gloss"], notes=d["notes"]
+                lexeme_id=d["lexeme_id"],
+                form=d["form"],
+                features=d["features"],
+                gloss=d["gloss"],
+                notes=d["notes"],
+                alternatives=d.get("alternatives", []),
             )
         case ItemKind.PHRASE:
             return PhraseData(

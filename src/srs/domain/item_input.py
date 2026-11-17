@@ -14,7 +14,8 @@ class ItemInput:
     """An item as clients send it. Exactly one of the kind-specific fields is set, matching `kind`.
 
     `id` may be chosen by the client (eg to make bulk imports idempotent); a new one is generated otherwise.
-    `template_ids` picks which templates get cards: on create it defaults to the kind's default-enabled templates, on
+    `created_at` (unix ms) is for imports that keep the original creation time; it only applies on create, and also
+    orders new cards. `template_ids` picks which templates get cards: on create it defaults to the kind's default-enabled templates, on
     update it defaults to leaving the current set alone.
     """
 
@@ -28,6 +29,7 @@ class ItemInput:
     fact: FactData | None = None
     id: str | None = None
     template_ids: list[str] | None = None
+    created_at: int | None = None
 
     def data(self) -> ItemData:
         by_kind: dict[ItemKind, ItemData | None] = {

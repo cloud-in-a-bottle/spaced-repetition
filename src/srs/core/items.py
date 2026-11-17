@@ -104,7 +104,7 @@ def save_item(conn: sqlite3.Connection, inp: ItemInput, seq: int, now: int) -> I
         lookup_key=derived.lookup_key,
         lexeme_id=derived.lexeme_id,
         tags=inp.tags,
-        created_at=now if existing is None else existing.created_at,
+        created_at=(inp.created_at or now) if existing is None else existing.created_at,
         updated_at=now,
         deleted=False,
         seq=seq,
@@ -112,9 +112,9 @@ def save_item(conn: sqlite3.Connection, inp: ItemInput, seq: int, now: int) -> I
     upsert_item(conn, item)
     settings = load_settings(conn)
     if existing is None or existing.deleted or inp.template_ids is not None:
-        set_item_cards(conn, item, _choose_templates(conn, item.kind, inp.template_ids), settings, seq, now)
+        set_item_cards(conn, item, _choose_templates(conn, item.kind, inp.template_ids), settings, seq)
     else:
-        set_item_cards(conn, item, live_templates_of(conn, item), settings, seq, now)
+        set_item_cards(conn, item, live_templates_of(conn, item), settings, seq)
     if item.kind == ItemKind.LEXEME:
         for form in forms_of_lexemes(conn, [item.id]):
             if form.language != item.language:

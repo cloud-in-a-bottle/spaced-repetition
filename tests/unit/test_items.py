@@ -82,3 +82,19 @@ def test_delete_item_tombstones_cards(client: TestClient, deck_id: str) -> None:
     assert client.delete(f"/api/items/{lx['id']}").status_code == 204
     changed = sync(client, cursor)["cards"]
     assert len(changed) == 2 and all(c["deleted"] for c in changed)
+
+
+def test_article_shown_with_lemma_not_in_features(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    r = client.post(
+        "/api/items",
+        json={
+            "deck_id": deck_id,
+            "kind": "lexeme",
+            "language": "es",
+            "lexeme": {"lemma": "casa", "pos": "noun", "gloss": "house", "features": {"gender": "feminine", "article": "la"}},
+        },
+    )
+    assert r.status_code == 201, r.text
+    card = next(c for c in sync(client)["cards"] if c["template_id"] == "lexeme-recognize")
+    assert "la casa" in card["front_html"]
+    assert "feminine" in card["back_html"] and "feminine · la" not in card["back_html"]

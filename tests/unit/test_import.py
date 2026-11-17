@@ -56,3 +56,19 @@ def test_import_review_for_missing_card(client: TestClient) -> None:  # type: ig
     assert client.post("/api/import", json=bundle).status_code == 400
     # the whole import is one transaction
     assert sync(client)["cards"] == []
+
+
+def test_import_suspends_and_keeps_created_at(client: TestClient) -> None:  # type: ignore[type-arg]
+    bundle = _bundle()
+    bundle["items"][1]["created_at"] = 1_500_000_000_000
+    bundle["suspended"] = [{"item_id": "hablar", "template_id": "lexeme-produce"}]
+    assert client.post("/api/import", json=bundle).status_code == 201
+    cards = {(c["item_id"], c["template_id"]): c for c in sync(client)["cards"]}
+    assert cards[("hablar", "lexeme-produce")]["suspended"]
+    assert not cards[("hablar", "lexeme-recognize")]["suspended"]
+    assert cards[("hablar", "lexeme-produce")]["created_at"] == 1_500_000_000_000
+    # re-importing without the suspension lifts it
+    bundle["suspended"] = []
+    client.post("/api/import", json=bundle)
+    produce = next(c for c in sync(client)["cards"] if c["template_id"] == "lexeme-produce")
+    assert not produce["suspended"]

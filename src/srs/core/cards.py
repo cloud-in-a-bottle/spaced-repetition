@@ -23,7 +23,7 @@ def _lexeme_for(conn: sqlite3.Connection, item: Item) -> Item | None:
 
 
 def set_item_cards(
-    conn: sqlite3.Connection, item: Item, templates: list[Template], settings: Settings, seq: int, now: int
+    conn: sqlite3.Connection, item: Item, templates: list[Template], settings: Settings, seq: int
 ) -> None:
     """Make the item's live cards exactly those for `templates`, (re)rendering each one.
 
@@ -44,12 +44,12 @@ def set_item_cards(
                 id=new_id(),
                 item_id=item.id,
                 template_id=template.id,
-                created_at=now,
+                created_at=item.created_at,
                 suspended=False,
                 deleted=False,
                 front_html="",
                 back_html="",
-                schedule=replay(now, [], settings),
+                schedule=replay(item.created_at, [], settings),
                 seq=seq,
             )
         upsert_card(

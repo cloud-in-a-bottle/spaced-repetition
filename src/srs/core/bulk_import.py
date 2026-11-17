@@ -13,6 +13,7 @@ from srs.domain.kinds import ItemKind
 from srs.domain.schedule import Rating
 from srs.domain.schedule import Review
 from srs.repo.cards import cards_for_items
+from srs.repo.cards import upsert_card
 from srs.repo.decks import find_deck_by_name
 from srs.repo.decks import get_deck
 
@@ -36,6 +37,12 @@ class ImportReview:
 
 
 @attr.s(auto_attribs=True, frozen=True)
+class ImportCardRef:
+    item_id: str
+    template_id: str
+
+
+@attr.s(auto_attribs=True, frozen=True)
 class ImportBundle:
     """Everything needed to bring a collection over from elsewhere (eg a converted anki deck).
 
@@ -46,6 +53,8 @@ class ImportBundle:
     decks: list[ImportDeck] = attr.Factory(list)
     items: list[ItemInput] = attr.Factory(list)
     reviews: list[ImportReview] = attr.Factory(list)
+    # cards of the bundle's items to suspend; the bundle's other cards are unsuspended
+    suspended: list[ImportCardRef] = attr.Factory(list)
 
 
 @attr.s(auto_attribs=True, frozen=True)
@@ -79,9 +88,15 @@ def import_bundle(conn: sqlite3.Connection, bundle: ImportBundle, seq: int, now:
             raise InvalidRequest("imported items need an `id`")
         save_item(conn, inp, seq, now)
 
-    card_ids: dict[tuple[str, str], str] = {}
-    for card in cards_for_items(conn, sorted({r.item_id for r in bundle.reviews})):
-        card_ids[(card.item_id, card.template_id)] = card.id
+    cards = {(c.item_id, c.template_id): c for c in cards_for_items(conn, [i.id for i in bundle.items if i.id])}
+    to_suspend = {(s.item_id, s.template_id) for s in bundle.suspended}
+    missing = to_suspend - cards.keys()
+    if missing:
+        raise InvalidRequest(f"can't suspend cards that don't exist: {sorted(missing)[:5]}")
+    for key, card in cards.items():
+        if not card.deleted and card.suspended != (key in to_suspend):
+            upsert_card(conn, attr.evolve(card, suspended=key in to_suspend, seq=seq))
+    card_ids = {key: c.id for key, c in cards.items()}
     reviews = []
     for r in bundle.reviews:
         card_id = card_ids.get((r.item_id, r.template_id))

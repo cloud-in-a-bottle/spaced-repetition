@@ -9,6 +9,7 @@ BASE_CSS = """
 .hint { color: #888; font-size: 1rem; }
 .answer { margin-top: 0.5rem; }
 .notes { color: #888; font-size: 1rem; margin-top: 1rem; white-space: pre-wrap; }
+.prewrap { white-space: pre-wrap; text-align: left; }
 hr { border: none; border-top: 1px solid #8884; margin: 1rem 0; }
 """
 
@@ -25,6 +26,9 @@ class DefaultTemplate:
 
 
 _NOTES = '{% if notes %}<div class="notes">{{ notes }}</div>{% endif %}'
+# eg "la casa": shows the article for languages where it carries the gender
+_LEMMA = "{% if features.get('article') %}{{ features.article }} {% endif %}{{ lemma }}"
+_ALTERNATIVES = '{% if alternatives %}<div class="hint">also: {{ alternatives|join(", ") }}</div>{% endif %}'
 
 DEFAULT_TEMPLATES: tuple[DefaultTemplate, ...] = (
     DefaultTemplate(
@@ -32,7 +36,7 @@ DEFAULT_TEMPLATES: tuple[DefaultTemplate, ...] = (
         name="Word → meaning",
         kind=ItemKind.LEXEME,
         skill=Skill.RECOGNIZE,
-        front='<div class="term" lang="{{ language }}">{{ lemma }}</div><div class="hint">{{ pos }}</div>',
+        front='<div class="term" lang="{{ language }}">' + _LEMMA + '</div><div class="hint">{{ pos }}</div>',
         back='{{ front_side }}<hr><div class="answer">{{ gloss }}</div>'
         '{% if features %}<div class="hint">{{ features|features }}</div>{% endif %}' + _NOTES,
         default_enabled=True,
@@ -43,8 +47,12 @@ DEFAULT_TEMPLATES: tuple[DefaultTemplate, ...] = (
         kind=ItemKind.LEXEME,
         skill=Skill.PRODUCE,
         front='<div class="answer">{{ gloss }}</div><div class="hint">{{ pos }}</div>',
-        back='{{ front_side }}<hr><div class="term" lang="{{ language }}">{{ lemma }}</div>'
-        '{% if features %}<div class="hint">{{ features|features }}</div>{% endif %}' + _NOTES,
+        back='{{ front_side }}<hr><div class="term" lang="{{ language }}">'
+        + _LEMMA
+        + "</div>"
+        + _ALTERNATIVES
+        + '{% if features %}<div class="hint">{{ features|features }}</div>{% endif %}'
+        + _NOTES,
         default_enabled=True,
     ),
     DefaultTemplate(
@@ -55,7 +63,9 @@ DEFAULT_TEMPLATES: tuple[DefaultTemplate, ...] = (
         front='<div class="term" lang="{{ language }}">{{ lexeme.lemma }}</div>'
         '<div class="hint">{{ features|features }}</div>',
         back='{{ front_side }}<hr><div class="term" lang="{{ language }}">{{ form }}</div>'
-        '{% if gloss %}<div class="answer">{{ gloss }}</div>{% endif %}' + _NOTES,
+        + _ALTERNATIVES
+        + '{% if gloss %}<div class="answer">{{ gloss }}</div>{% endif %}'
+        + _NOTES,
         default_enabled=True,
     ),
     DefaultTemplate(
@@ -91,8 +101,8 @@ DEFAULT_TEMPLATES: tuple[DefaultTemplate, ...] = (
         name="Front → back",
         kind=ItemKind.FACT,
         skill=Skill.RECALL,
-        front="<div>{{ front }}</div>",
-        back='{{ front_side }}<hr><div class="answer">{{ back }}</div>' + _NOTES,
+        front='<div class="prewrap">{{ front }}</div>',
+        back='{{ front_side }}<hr><div class="answer prewrap">{{ back }}</div>' + _NOTES,
         default_enabled=True,
     ),
 )

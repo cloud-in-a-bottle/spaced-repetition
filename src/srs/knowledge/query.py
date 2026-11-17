@@ -3,6 +3,7 @@ from collections import defaultdict
 
 from srs.domain.item_data import FormData
 from srs.domain.item_data import LexemeData
+from srs.domain.item_keys import lookup_keys
 from srs.domain.kinds import ItemKind
 from srs.domain.kinds import Skill
 from srs.domain.normalize import lookup_key
@@ -110,12 +111,14 @@ def lookup_words(conn: sqlite3.Connection, language: str, words: list[str], now:
     knowledge = _lexeme_knowledge(conn, list(lexemes.values()), now)
 
     matches_by_key: dict[str, list[WordMatch]] = defaultdict(list)
+    wanted = set(keys)
     for lx in lexemes.values():
-        if lx.lookup_key in keys:
-            matches_by_key[lx.lookup_key].append(WordMatch(matched_form_id=None, lexeme=knowledge[lx.id]))
+        for key in wanted.intersection(lookup_keys(lx.data)):
+            matches_by_key[key].append(WordMatch(matched_form_id=None, lexeme=knowledge[lx.id]))
     for form in forms:
-        assert form.lookup_key is not None and form.lexeme_id is not None
-        matches_by_key[form.lookup_key].append(WordMatch(matched_form_id=form.id, lexeme=knowledge[form.lexeme_id]))
+        assert form.lexeme_id is not None
+        for key in wanted.intersection(lookup_keys(form.data)):
+            matches_by_key[key].append(WordMatch(matched_form_id=form.id, lexeme=knowledge[form.lexeme_id]))
     return [WordLookup(word=w, matches=matches_by_key[lookup_key(w)]) for w in words]
 
 
