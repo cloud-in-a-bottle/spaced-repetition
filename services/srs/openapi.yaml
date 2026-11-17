@@ -111,10 +111,14 @@ components:
           items:
             type: object
             properties:
-              matched_form_id:
-                type: [string, "null"]
-                description: Set when the word matched one of the lexeme's forms rather than its lemma.
               lexeme: {$ref: "#/components/schemas/LexemeKnowledge"}
+              matched_lemma:
+                type: boolean
+                description: The word is the lexeme's lemma or one of its alternative spellings.
+              matched_form_ids:
+                type: array
+                items: {type: string}
+                description: Forms of the lexeme spelled like the word (several when forms coincide, eg "fuese").
     LexemeKnowledge:
       type: object
       properties:
@@ -124,7 +128,7 @@ components:
         pos:
           type: string
           enum: [noun, proper_noun, verb, auxiliary, adjective, adverb, pronoun, determiner, preposition, conjunction,
-                 numeral, particle, interjection, other]
+                 numeral, particle, classifier, interjection, other]
         gloss: {type: string}
         features: {type: object, additionalProperties: {type: string}, example: {gender: feminine}}
         tags: {type: array, items: {type: string}}

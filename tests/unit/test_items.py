@@ -91,7 +91,12 @@ def test_article_shown_with_lemma_not_in_features(client: TestClient, deck_id: s
             "deck_id": deck_id,
             "kind": "lexeme",
             "language": "es",
-            "lexeme": {"lemma": "casa", "pos": "noun", "gloss": "house", "features": {"gender": "feminine", "article": "la"}},
+            "lexeme": {
+                "lemma": "casa",
+                "pos": "noun",
+                "gloss": "house",
+                "features": {"gender": "feminine", "article": "la"},
+            },
         },
     )
     assert r.status_code == 201, r.text

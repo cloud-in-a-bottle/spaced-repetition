@@ -39,5 +39,7 @@ class PartOfSpeech(enum.StrEnum):
     CONJUNCTION = "conjunction"
     NUMERAL = "numeral"
     PARTICLE = "particle"
+    # measure words, eg Mandarin 个 or 本
+    CLASSIFIER = "classifier"
     INTERJECTION = "interjection"
     OTHER = "other"

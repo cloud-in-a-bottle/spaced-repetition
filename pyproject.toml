@@ -26,6 +26,8 @@ dev = [
     # subdomain routing and cookie auth). Tests hit a real, containerized app.
     # Requires podman on the host.
     "openhost[test-harness] @ git+https://github.com/cloud-in-a-bottle/cloud-in-a-bottle@main",
+    "zstandard>=0.25.0",
+    "wordfreq>=3.1.1",
 ]
 
 [build-system]

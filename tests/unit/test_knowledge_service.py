@@ -56,7 +56,7 @@ def test_lookup_by_lemma_and_form(client: TestClient, deck_id: str) -> None:  # 
 
     assert hablar["word"] == "Hablar"
     [m] = hablar["matches"]
-    assert m["matched_form_id"] is None
+    assert m["matched_lemma"] and m["matched_form_ids"] == []
     assert m["lexeme"]["lemma"] == "hablar" and m["lexeme"]["pos"] == "verb"
     assert m["lexeme"]["status"] == "known"
     assert 0 < m["lexeme"]["recall_probability"] < 1
@@ -64,7 +64,7 @@ def test_lookup_by_lemma_and_form(client: TestClient, deck_id: str) -> None:  # 
     assert m["lexeme"]["forms"][0]["form"] == "hablo"
 
     [m] = hablo["matches"]
-    assert m["matched_form_id"] == form["id"] and m["lexeme"]["lemma"] == "hablar"
+    assert not m["matched_lemma"] and m["matched_form_ids"] == [form["id"]] and m["lexeme"]["lemma"] == "hablar"
 
     assert casa["matches"][0]["lexeme"]["status"] == "new"
     assert perro["matches"] == []
@@ -113,4 +113,4 @@ def test_lookup_matches_alternatives(client: TestClient, deck_id: str) -> None: 
     )
     assert r.status_code == 201, r.text
     [res] = _lookup(client, ["Saliesen"], _service_headers("knowledge:read")).json()["results"]
-    assert res["matches"][0]["matched_form_id"] == r.json()["id"]
+    assert res["matches"][0]["matched_form_ids"] == [r.json()["id"]]

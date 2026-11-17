@@ -110,16 +110,29 @@ def lookup_words(conn: sqlite3.Connection, language: str, words: list[str], now:
             lexemes[form.lexeme_id] = get_item(conn, form.lexeme_id)
     knowledge = _lexeme_knowledge(conn, list(lexemes.values()), now)
 
-    matches_by_key: dict[str, list[WordMatch]] = defaultdict(list)
     wanted = set(keys)
+    lemma_hits: dict[str, set[str]] = defaultdict(set)  # key -> lexeme ids
+    form_hits: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))  # key -> lexeme -> forms
     for lx in lexemes.values():
         for key in wanted.intersection(lookup_keys(lx.data)):
-            matches_by_key[key].append(WordMatch(matched_form_id=None, lexeme=knowledge[lx.id]))
-    for form in forms:
+            lemma_hits[key].add(lx.id)
+    for form in sorted(forms, key=lambda f: f.id):
         assert form.lexeme_id is not None
         for key in wanted.intersection(lookup_keys(form.data)):
-            matches_by_key[key].append(WordMatch(matched_form_id=form.id, lexeme=knowledge[form.lexeme_id]))
-    return [WordLookup(word=w, matches=matches_by_key[lookup_key(w)]) for w in words]
+            form_hits[key][form.lexeme_id].append(form.id)
+
+    def matches(key: str) -> list[WordMatch]:
+        lexeme_ids = sorted(lemma_hits[key] | form_hits[key].keys())
+        return [
+            WordMatch(
+                lexeme=knowledge[lx_id],
+                matched_lemma=lx_id in lemma_hits[key],
+                matched_form_ids=form_hits[key].get(lx_id, []),
+            )
+            for lx_id in lexeme_ids
+        ]
+
+    return [WordLookup(word=w, matches=matches(lookup_key(w))) for w in words]
 
 
 def list_lexemes(

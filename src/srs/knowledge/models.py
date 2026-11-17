@@ -58,9 +58,11 @@ class LexemeKnowledge:
 
 @attr.s(auto_attribs=True, frozen=True)
 class WordMatch:
-    # set when the word matched one of the lexeme's forms rather than its lemma
-    matched_form_id: str | None
     lexeme: LexemeKnowledge
+    # whether the word is the lexeme's lemma (or one of its alternative spellings)
+    matched_lemma: bool
+    # forms of the lexeme spelled like the word, eg both 1st and 3rd person for Spanish "fuese"
+    matched_form_ids: list[str]
 
 
 @attr.s(auto_attribs=True, frozen=True)
