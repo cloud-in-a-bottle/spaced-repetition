@@ -1,0 +1,158 @@
+openapi: 3.1.0
+info:
+  title: srs knowledge service
+  version: 0.1.0
+  description: |
+    Lets other Cloud in a Bottle apps ask what the owner knows, from their spaced repetition reviews.
+
+    Service URL: `github.com/zplizzi/srs/services/srs`. Consume it with:
+
+    ```toml
+    [[services.v2.consumes]]
+    service = "github.com/zplizzi/srs/services/srs"
+    shortname = "srs"
+    version = ">=0.1.0"
+    grants = ["knowledge:read"]
+    ```
+
+    and call `$BOTTLE_ROUTER_URL/api/services/v2/call/srs/<path below>`.
+
+    ## Model
+
+    The owner's collection is made of **items**, each of a kind: `lexeme` (a word: language, lemma, part of speech,
+    gloss), `form` (one inflection of a lexeme, with features like tense/person), `phrase`, or `fact`. Each item has
+    one **card** per **skill** practised (`recognize`: see it, recall the meaning; `produce`: see the meaning, recall
+    it). Scheduling uses FSRS, so each card has a *retrievability*: the predicted probability the owner recalls it
+    right now.
+
+    Words are matched case-insensitively (Unicode NFC + casefold) but accent-sensitively, against lexeme lemmas and
+    form spellings, within one language. Language codes are whatever the owner entered; ISO 639-1 (`es`, `de`) is the
+    convention.
+
+    ## Permissions
+
+    Grant `knowledge:read` (a string grant, global scope) for every endpoint here. Without it you get the standard
+    `permission_required` 403, which the router decorates with a `grant_url` to send the owner to.
+paths:
+  /v1/lexemes/lookup:
+    post:
+      summary: Look up words (lemmas or inflected forms)
+      description: |
+        For each word, returns the lexemes it matches and how well they're known. A word can match several lexemes
+        (homographs, or a form shared by two words); no matches means the owner isn't studying it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [language, words]
+              properties:
+                language: {type: string, example: es}
+                words:
+                  type: array
+                  maxItems: 5000
+                  items: {type: string}
+                  example: [hablo, casa, perro]
+      responses:
+        "200":
+          description: One result per input word, in the same order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items: {$ref: "#/components/schemas/WordLookup"}
+        "403": {$ref: "#/components/responses/PermissionRequired"}
+  /v1/lexemes:
+    get:
+      summary: List every lexeme in a language
+      parameters:
+        - {name: language, in: query, required: true, schema: {type: string}}
+        - {name: status, in: query, required: false, schema: {$ref: "#/components/schemas/KnowledgeStatus"}}
+      responses:
+        "200":
+          description: All matching lexemes, ordered by lemma.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lexemes:
+                    type: array
+                    items: {$ref: "#/components/schemas/LexemeKnowledge"}
+        "403": {$ref: "#/components/responses/PermissionRequired"}
+components:
+  responses:
+    PermissionRequired:
+      description: The consumer hasn't been granted `knowledge:read`.
+      content:
+        application/json:
+          schema:
+            type: object
+            example:
+              error: permission_required
+              required_grant: {grant: "knowledge:read", scope: global}
+  schemas:
+    KnowledgeStatus:
+      type: string
+      enum: [new, learning, known]
+      description: |
+        Over the lexeme's cards and its forms' cards: `known` if any card has graduated to long-term review,
+        `learning` if any has been reviewed, otherwise `new` (added but never studied).
+    WordLookup:
+      type: object
+      properties:
+        word: {type: string, description: The word as sent.}
+        matches:
+          type: array
+          items:
+            type: object
+            properties:
+              matched_form_id:
+                type: [string, "null"]
+                description: Set when the word matched one of the lexeme's forms rather than its lemma.
+              lexeme: {$ref: "#/components/schemas/LexemeKnowledge"}
+    LexemeKnowledge:
+      type: object
+      properties:
+        item_id: {type: string}
+        language: {type: string}
+        lemma: {type: string}
+        pos:
+          type: string
+          enum: [noun, proper_noun, verb, auxiliary, adjective, adverb, pronoun, determiner, preposition, conjunction,
+                 numeral, particle, interjection, other]
+        gloss: {type: string}
+        features: {type: object, additionalProperties: {type: string}, example: {gender: feminine}}
+        tags: {type: array, items: {type: string}}
+        status: {$ref: "#/components/schemas/KnowledgeStatus"}
+        recall_probability:
+          type: number
+          description: Highest retrievability over the lexeme's own cards right now (0 if never reviewed).
+        skills: {type: array, items: {$ref: "#/components/schemas/SkillKnowledge"}}
+        forms:
+          type: array
+          items:
+            type: object
+            properties:
+              item_id: {type: string}
+              form: {type: string}
+              features: {type: object, additionalProperties: {type: string}, example: {tense: present, person: 1st}}
+              skills: {type: array, items: {$ref: "#/components/schemas/SkillKnowledge"}}
+    SkillKnowledge:
+      type: object
+      properties:
+        skill: {type: string, enum: [recognize, produce, recall]}
+        template_id: {type: string}
+        state: {type: string, enum: [new, learning, review, relearning]}
+        retrievability: {type: number, description: "FSRS probability of recall right now, 0-1."}
+        stability_days: {type: [number, "null"]}
+        difficulty: {type: [number, "null"], description: "FSRS difficulty, 1-10."}
+        reps: {type: integer}
+        lapses: {type: integer}
+        last_review: {type: [integer, "null"], description: Unix ms.}
+        due: {type: integer, description: Unix ms.}
+        suspended: {type: boolean}

@@ -1,0 +1,24 @@
+[app]
+name = "srs"
+version = "0.1.0"
+description = "Spaced repetition (FSRS) that knows what each card is about, and tells other apps what you know"
+
+[runtime.container]
+image = "Dockerfile"
+port = 8080
+
+[routing]
+health_check = "/health"
+
+[resources]
+memory_mb = 256
+cpu_cores = 0.5
+
+[data]
+sqlite = ["main"]
+
+# Other apps ask what you know through this service; see services/srs/openapi.yaml.
+[[services.v2.provides]]
+service = "github.com/zplizzi/srs/services/srs"
+version = "0.1.0"
+endpoint = "/service/"
