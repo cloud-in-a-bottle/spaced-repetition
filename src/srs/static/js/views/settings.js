@@ -76,6 +76,33 @@ export async function settingsView() {
     );
   }
 
+  async function dictionariesSection() {
+    const section = h("section", {}, h("h2", {}, "Dictionaries"));
+    let timer = null;
+    async function render() {
+      let list;
+      try {
+        list = await api("GET", "/dictionaries");
+      } catch (err) {
+        section.replaceChildren(h("h2", {}, "Dictionaries"), h("p.muted", {}, `Unavailable offline (${err.message}).`));
+        return;
+      }
+      const label = (d) => ({ installed: "installed", missing: "not installed", installing: `building… ${d.status.entries.toLocaleString()} entries`, failed: `failed: ${d.status.error}` })[d.status.state];
+      section.replaceChildren(
+        h("h2", {}, "Dictionaries"),
+        h("p.muted", {}, "Offline dictionaries for the reader, built from Wiktionary (via kaikki.org; CC BY-SA). ",
+          "They give definitions and match inflected words (zarpó → zarpar) to your deck. About 100 MB to download and a few minutes to build."),
+        h("ul.deck-admin", {}, list.map((d) => h("li", {}, d.language, " — ", label(d),
+          d.status.state === "installing" ? null
+            : h("button.link", { onclick: async () => { await api("POST", `/dictionaries/${d.language}/install`); render(); } },
+                d.status.state === "installed" ? "update" : "install")))));
+      clearTimeout(timer);
+      if (list.some((d) => d.status.state === "installing")) timer = setTimeout(render, 3000);
+    }
+    render();
+    return section;
+  }
+
   mount(
     h("div", {},
       h("form.editor", { onsubmit: save },
@@ -90,6 +117,7 @@ export async function settingsView() {
         status,
       ),
       await decksSection(),
+      await dictionariesSection(),
       h("section", {},
         h("h2", {}, "More"),
         h("p", {}, h("a", { href: "#/templates" }, "Edit card templates")),

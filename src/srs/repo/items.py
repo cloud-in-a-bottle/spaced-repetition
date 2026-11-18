@@ -83,11 +83,11 @@ def items_by_lookup_keys(conn: sqlite3.Connection, language: str, kind: ItemKind
     if not keys:
         return []
     placeholders = ",".join("?" * len(keys))
+    # driven from the key index: matching items to a long key list the other way round probes it per item
     rows = conn.execute(
-        "SELECT DISTINCT items.* FROM items JOIN item_keys ON item_keys.item_id = items.id "
-        f"WHERE items.deleted = 0 AND {IN_MAIN_DECK} AND items.language = ? AND items.kind = ? "
-        f"AND item_keys.key IN ({placeholders})",
-        [language, kind, *keys],
+        f"SELECT items.* FROM items WHERE items.id IN (SELECT item_id FROM item_keys WHERE key IN ({placeholders})) "
+        f"AND items.deleted = 0 AND {IN_MAIN_DECK} AND items.language = ? AND items.kind = ?",
+        [*keys, language, kind],
     )
     return [_from_row(r) for r in rows]
 

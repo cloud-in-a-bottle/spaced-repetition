@@ -18,8 +18,8 @@ from srs.domain.item_input import ItemInput
 from srs.repo.cards import cards_for_items
 from srs.repo.decks import Deck
 from srs.repo.decks import get_deck
+from srs.repo.decks import largest_main_deck
 from srs.repo.decks import list_decks
-from srs.repo.items import IN_MAIN_DECK
 from srs.repo.items import Item
 from srs.repo.items import get_item
 from srs.repo.items import main_twin
@@ -44,13 +44,9 @@ def _target_deck(conn: sqlite3.Connection, review_set: Deck, item: Item, deck_id
         if deck.ephemeral:
             raise InvalidRequest(f"{deck.name} is a review set, not a main deck")
         return deck
-    row = conn.execute(
-        f"SELECT deck_id FROM items WHERE deleted = 0 AND {IN_MAIN_DECK} AND language IS ? "
-        "GROUP BY deck_id ORDER BY count(*) DESC LIMIT 1",
-        (item.language,),
-    ).fetchone()
-    if row is not None:
-        return get_deck(conn, row["deck_id"])
+    largest = largest_main_deck(conn, item.language)
+    if largest is not None:
+        return get_deck(conn, largest)
     main = [d for d in list_decks(conn) if not d.ephemeral]
     if not main:
         raise InvalidRequest("there's no main deck to add it to")

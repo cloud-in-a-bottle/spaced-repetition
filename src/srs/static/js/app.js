@@ -4,6 +4,8 @@ import { onSyncStatus, refreshPendingCount, sync } from "./sync.js";
 import { homeView } from "./views/home.js";
 import { itemEditorView } from "./views/item_editor.js";
 import { itemsView } from "./views/items.js";
+import { libraryView, textImportView } from "./views/library.js";
+import { readerView } from "./views/reader.js";
 import { settingsView } from "./views/settings.js";
 import { studyView } from "./views/study.js";
 import { templatesView } from "./views/templates.js";
@@ -11,6 +13,9 @@ import { templatesView } from "./views/templates.js";
 const routes = [
   [/^#?\/?$/, () => homeView()],
   [/^#\/study\/([^/]+)(?:\/([^/]+))?$/, ([deckId, pos]) => studyView(deckId === "all" ? null : deckId, pos ?? null)],
+  [/^#\/read$/, () => libraryView()],
+  [/^#\/read\/new\/([^/]+)$/, ([courseId]) => textImportView(courseId)],
+  [/^#\/read\/([^/]+)$/, ([textId]) => readerView(textId)],
   [/^#\/items$/, () => itemsView()],
   [/^#\/items\/new$/, () => itemEditorView(null)],
   [/^#\/items\/(.+)$/, ([id]) => itemEditorView(id)],

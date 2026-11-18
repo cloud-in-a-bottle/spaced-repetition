@@ -23,6 +23,21 @@ does the owner know?").
   stays, and shows as "in a main deck" once a main deck has it (or anything spelled the same). Deleting a review set
   deletes its items; copies already added to a main deck stay.
 
+## reader
+
+The **Read** tab is a LingQ / Language Reactor style reader (`src/srs/reader/`, `src/srs/api/reader.py`). A
+library of courses holds texts (pasted text, or `.srt` subtitles shown as timed lines). Words are coloured by what
+the deck says: plain if you know them (in a main deck, FSRS recall ≥ 80%), yellow if you're weak on them (in a
+deck but poorly recalled, never studied, or in a review set), blue if they're in no deck. Words you mark "I know
+this" or "Ignore" in the reader are plain too, as are words that look like names.
+
+Clicking a word opens a panel with its deck entries, an offline dictionary (Wiktionary via kaikki.org, built on the
+server into the app-data dir: Settings → Dictionaries), Claude Haiku translation in context, and a prefilled form to
+add it to a deck or review set. The dictionary also maps inflections to lemmas (zarpó → zarpar), so a word counts
+as known when its lemma is. Claude is optional: the key comes from the openhost secrets app (`ANTHROPIC_API_KEY`).
+
+`tools/reading/` has scripts for preparing material by hand (analysis, review sets, library import).
+
 ## offline sync
 
 The PWA keeps the collection in IndexedDB and studies from it with no connection. The trick that keeps sync

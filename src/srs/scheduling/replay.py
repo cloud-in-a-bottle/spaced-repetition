@@ -19,6 +19,10 @@ _STATE_FROM_FSRS = {
 }
 
 
+# py-fsrs mints a unique id for each Card by sleeping a millisecond unless given one; ours never use it.
+_CARD_ID = 1
+
+
 def make_scheduler(settings: Settings) -> fsrs.Scheduler:
     return fsrs.Scheduler(
         parameters=settings.fsrs_parameters,
@@ -49,7 +53,7 @@ def replay(created_at: int, reviews: Sequence[Review], settings: Settings) -> Sc
     of reviews computes the same schedule.
     """
     scheduler = make_scheduler(settings)
-    card = fsrs.Card(due=to_datetime(created_at))
+    card = fsrs.Card(card_id=_CARD_ID, due=to_datetime(created_at))
     reps = 0
     lapses = 0
     for review in sort_reviews(reviews):
@@ -78,6 +82,7 @@ def retrievability(schedule: Schedule, now: int, settings: Settings) -> float:
     if schedule.last_review is None or schedule.stability is None:
         return 0.0
     card = fsrs.Card(
+        card_id=_CARD_ID,
         state=fsrs.State.Review,
         stability=schedule.stability,
         difficulty=schedule.difficulty,

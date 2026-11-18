@@ -1,0 +1,288 @@
+"""What the reader knows about each word: its status (from the deck, the owner's marks and the review sets, with the
+dictionary mapping inflections to lemmas) and the details shown when you click it."""
+
+import json
+import re
+import sqlite3
+from collections import defaultdict
+
+import attr
+
+from srs.dictionary.store import DictEntry
+from srs.dictionary.store import Dictionary
+from srs.domain.kinds import PartOfSpeech
+from srs.domain.normalize import lookup_key
+from srs.domain.schedule import CardState
+from srs.knowledge.models import LexemeKnowledge
+from srs.knowledge.query import lookup_words
+from srs.reader.text_formats import Token
+
+# A deck word counts as known for reading if FSRS puts the chance of recalling it at least this high.
+KNOWN_RECALL = 0.8
+
+
+class Status:
+    KNOWN = "known"  # in a main deck and recalled well: no highlight
+    LEARNING = "learning"  # in a main deck but weak, new or suspended, or being studied in a review set
+    NEW = "new"  # not in any deck: highlighted
+    IGNORED = "ignored"  # marked by the owner as not worth learning (names, foreign words)
+    NAME = "name"  # looks like a proper noun: no highlight
+
+
+def reading_status(lx: LexemeKnowledge) -> str:
+    """Recognition is what matters for reading, so the best recall over the word's cards decides; words learned only
+    through their conjugations count by those."""
+    studied = [s for s in lx.skills if s.reps > 0] or [s for f in lx.forms for s in f.skills if s.reps > 0]
+    if not studied:
+        return Status.LEARNING
+    best = max(s.retrievability for s in studied)
+    in_review = any(s.state == CardState.REVIEW for s in studied)
+    return Status.KNOWN if in_review and best >= KNOWN_RECALL else Status.LEARNING
+
+
+def marks(conn: sqlite3.Connection, language: str, keys: list[str]) -> dict[str, str]:
+    result = {}
+    for i in range(0, len(keys), 500):
+        chunk = keys[i : i + 500]
+        rows = conn.execute(
+            f"SELECT key, status FROM word_marks WHERE language = ? AND key IN ({','.join('?' * len(chunk))})",
+            [language, *chunk],
+        )
+        result.update({r["key"]: r["status"] for r in rows})
+    return result
+
+
+def set_marks(conn: sqlite3.Connection, language: str, words: list[str], status: str | None, now: int) -> None:
+    keys = sorted({lookup_key(w) for w in words})
+    if status is None:
+        conn.executemany("DELETE FROM word_marks WHERE language = ? AND key = ?", [(language, k) for k in keys])
+        return
+    conn.executemany(
+        "INSERT INTO word_marks (language, key, status, updated_at) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT (language, key) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at",
+        [(language, k, status, now) for k in keys],
+    )
+
+
+def _review_set_items(conn: sqlite3.Connection, language: str, keys: list[str]) -> dict[str, list[sqlite3.Row]]:
+    """Review-set lexemes (directly, or via a form) spelled like each key."""
+    result: dict[str, list[sqlite3.Row]] = defaultdict(list)
+    for i in range(0, len(keys), 500):
+        chunk = keys[i : i + 500]
+        rows = conn.execute(
+            "SELECT item_keys.key AS key, coalesce(lexemes.id, items.id) AS item_id, "
+            "coalesce(lexemes.data, items.data) AS data, items.deck_id AS deck_id "
+            "FROM item_keys JOIN items ON items.id = item_keys.item_id JOIN decks ON decks.id = items.deck_id "
+            "LEFT JOIN items AS lexemes ON lexemes.id = items.lexeme_id "
+            "WHERE decks.ephemeral = 1 AND items.deleted = 0 AND items.language = ? AND items.kind IN ('lexeme', 'form') "
+            f"AND item_keys.key IN ({','.join('?' * len(chunk))})",
+            [language, *chunk],
+        )
+        for r in rows:
+            result[r["key"]].append(r)
+    return result
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class WordContext:
+    """Everything the deck, marks and review sets say about a set of words, gathered in a few queries."""
+
+    candidates: dict[str, set[str]]  # word key -> itself plus dictionary lemmas
+    deck: dict[str, list[LexemeKnowledge]]  # candidate key -> main-deck lexemes matching it
+    matched_by_form: dict[str, set[str]]  # candidate key -> lexeme ids it matched as an inflected form
+    marks: dict[str, str]
+    review_sets: dict[str, list[sqlite3.Row]]
+
+
+def gather(
+    conn: sqlite3.Connection, dictionary: Dictionary | None, language: str, keys: list[str], now: int
+) -> WordContext:
+    candidates = {k: {k} | (dictionary.lemmas(k) if dictionary else set()) for k in keys}
+    everything = sorted(set().union(*candidates.values())) if candidates else []
+    deck: dict[str, list[LexemeKnowledge]] = {}
+    by_form: dict[str, set[str]] = {}
+    for i in range(0, len(everything), 4000):
+        for wl in lookup_words(conn, language, everything[i : i + 4000], now):
+            deck[wl.word] = [m.lexeme for m in wl.matches]
+            by_form[wl.word] = {m.lexeme.item_id for m in wl.matches if m.matched_form_ids and not m.matched_lemma}
+    return WordContext(
+        candidates=candidates,
+        deck=deck,
+        matched_by_form=by_form,
+        marks=marks(conn, language, keys),
+        review_sets=_review_set_items(conn, language, everything),
+    )
+
+
+def status_of(ctx: WordContext, key: str) -> str:
+    lexemes = [lx for c in ctx.candidates[key] for lx in ctx.deck.get(c, [])]
+    statuses = {reading_status(lx) for lx in lexemes}
+    if Status.KNOWN in statuses:
+        return Status.KNOWN
+    if statuses:
+        return Status.LEARNING
+    if key in ctx.marks:
+        return ctx.marks[key]
+    if any(ctx.review_sets.get(c) for c in ctx.candidates[key]):
+        return Status.LEARNING
+    return Status.NEW
+
+
+def word_statuses(
+    conn: sqlite3.Connection,
+    dictionary: Dictionary | None,
+    language: str,
+    tokens: list[Token],
+    now: int,
+) -> dict[str, str]:
+    """Status per distinct word in `tokens`. A word in no deck that's always capitalized is taken for a name when the
+    dictionary has no common word spelled that way, or when it's capitalized mid-sentence too (so "Vega" in "Lope de
+    Vega" counts, but a capitalized sentence-initial word doesn't)."""
+    capitalized: dict[str, bool] = {}
+    mid_sentence: dict[str, bool] = {}
+    sentence_start = True
+    for t in tokens:
+        if t.key is None:
+            if any(ch in t.text for ch in ".!?¿¡…-\n") or not t.text.strip():
+                sentence_start = sentence_start or any(ch in t.text for ch in ".!?¿¡…-\n")
+            continue
+        if len(t.text) > 1 and t.text.isupper():  # SHOUTING or a speaker label: says nothing about names
+            capitalized.setdefault(t.key, True)
+            mid_sentence.setdefault(t.key, False)
+            sentence_start = False
+            continue
+        cap = t.text[:1].isupper()
+        capitalized[t.key] = capitalized.get(t.key, True) and cap
+        mid_sentence[t.key] = mid_sentence.get(t.key, False) or (cap and not sentence_start)
+        sentence_start = False
+    keys = sorted(capitalized)
+    ctx = gather(conn, dictionary, language, keys, now)
+    result = {}
+    for key in keys:
+        status = status_of(ctx, key)
+        if status == Status.NEW and capitalized[key]:
+            # always capitalized, and either not a common word or capitalized mid-sentence too ("Lope de Vega")
+            common = dictionary.lemmas(key) if dictionary is not None else {key}
+            looks_like_name = not common or mid_sentence[key]
+            if looks_like_name:
+                status = Status.NAME
+        result[key] = status
+    return result
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class DeckMatch:
+    item_id: str
+    deck_id: str | None
+    lemma: str
+    pos: str
+    gloss: str
+    status: str
+    recall: float
+    # how the clicked word reached it: "word" (its lemma or one of its forms) or "dictionary" (via the lemma
+    # the dictionary says it's an inflection of)
+    via: str
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class Suggestion:
+    """A prefilled lexeme for "add to deck"."""
+
+    lemma: str
+    pos: str
+    gloss: str
+    gender: str | None
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class WordDetails:
+    word: str
+    key: str
+    status: str
+    mark: str | None
+    deck: list[DeckMatch]
+    review_sets: list[DeckMatch]
+    dictionary: list[DictEntry]
+    # entries for the lemmas `dictionary` says the word is an inflection of
+    lemma_entries: list[DictEntry]
+    suggestion: Suggestion | None
+
+
+def _first_gloss(senses: list[str]) -> str:
+    gloss = re.sub(r"^\([^)]*\)\s*", "", senses[0]) if senses else ""
+    return gloss[:120]
+
+
+def _suggest(word: str, entries: list[DictEntry], lemma_entries: list[DictEntry]) -> Suggestion | None:
+    allowed = {p.value for p in PartOfSpeech}
+    # the word's own headword first ("silencio" the noun, not a form of silenciar), else its lemma's
+    for e in [*entries, *lemma_entries]:
+        if e.senses and e.pos in allowed and e.pos != PartOfSpeech.PROPER_NOUN:
+            return Suggestion(lemma=e.word, pos=e.pos, gloss=_first_gloss(e.senses), gender=e.gender)
+    return Suggestion(lemma=word.lower(), pos=PartOfSpeech.OTHER.value, gloss="", gender=None) if word else None
+
+
+def word_details(
+    conn: sqlite3.Connection, dictionary: Dictionary | None, language: str, word: str, now: int
+) -> WordDetails:
+    key = lookup_key(word)
+    ctx = gather(conn, dictionary, language, [key], now)
+    deck_ids = {
+        r["id"]: r["deck_id"]
+        for r in conn.execute(
+            "SELECT id, deck_id FROM items WHERE id IN "
+            f"({','.join('?' * len({lx.item_id for c in ctx.candidates[key] for lx in ctx.deck.get(c, [])}))})",
+            sorted({lx.item_id for c in ctx.candidates[key] for lx in ctx.deck.get(c, [])}),
+        )
+    }
+    deck, seen = [], set()
+    for c in sorted(ctx.candidates[key], key=lambda c: c != key):  # the word itself first
+        for lx in ctx.deck.get(c, []):
+            if lx.item_id in seen:
+                continue
+            seen.add(lx.item_id)
+            deck.append(
+                DeckMatch(
+                    item_id=lx.item_id,
+                    deck_id=deck_ids.get(lx.item_id),
+                    lemma=lx.lemma,
+                    pos=str(lx.pos),
+                    gloss=lx.gloss,
+                    status=reading_status(lx),
+                    recall=round(max([s.retrievability for s in lx.skills] or [lx.recall_probability]), 3),
+                    via="word" if c == key else "dictionary",
+                )
+            )
+    review_sets, seen = [], set()
+    for c in ctx.candidates[key]:
+        for r in ctx.review_sets.get(c, []):
+            if r["item_id"] in seen:
+                continue
+            seen.add(r["item_id"])
+            data = json.loads(r["data"])
+            review_sets.append(
+                DeckMatch(
+                    item_id=r["item_id"],
+                    deck_id=r["deck_id"],
+                    lemma=data.get("lemma", ""),
+                    pos=data.get("pos", ""),
+                    gloss=data.get("gloss", ""),
+                    status=Status.LEARNING,
+                    recall=0.0,
+                    via="word" if c == key else "dictionary",
+                )
+            )
+    entries = dictionary.entries(word) if dictionary else []
+    lemma_words = sorted({f.lemma for e in entries for f in e.form_of})
+    lemma_entries = [le for lw in lemma_words for le in (dictionary.entries(lw) if dictionary else []) if le.senses]
+    return WordDetails(
+        word=word,
+        key=key,
+        status=status_of(ctx, key),
+        mark=ctx.marks.get(key),
+        deck=deck,
+        review_sets=review_sets,
+        dictionary=entries,
+        lemma_entries=lemma_entries,
+        suggestion=_suggest(word, entries, lemma_entries),
+    )

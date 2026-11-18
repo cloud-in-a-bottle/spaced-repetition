@@ -1,0 +1,202 @@
+import gzip
+import json
+import time
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+from litestar.testing import TestClient
+
+from srs.app import create_app
+from srs.config import Config
+from srs.dictionary.build import build_dictionary
+from tests.unit.helpers import add_lexeme
+from tests.unit.helpers import sync
+
+WIKTIONARY = [
+    {
+        "word": "zarpar",
+        "pos": "verb",
+        "senses": [{"raw_glosses": ["(nautical) to set sail"], "glosses": ["to set sail"]}],
+    },
+    {
+        "word": "zarpó",
+        "pos": "verb",
+        "senses": [
+            {"glosses": ["third-person singular preterite indicative of zarpar"], "form_of": [{"word": "zarpar"}]}
+        ],
+    },
+    {"word": "galeón", "pos": "noun", "senses": [{"glosses": ["galleon"], "tags": ["masculine"]}]},
+    {"word": "barco", "pos": "noun", "senses": [{"glosses": ["boat, ship"], "tags": ["masculine"]}]},
+    {"word": "barcos", "pos": "noun", "senses": [{"glosses": ["plural of barco"], "form_of": [{"word": "barco"}]}]},
+    {"word": "el", "pos": "article", "senses": [{"glosses": ["the"]}]},
+    {"word": "los", "pos": "article", "senses": [{"glosses": ["the (masculine plural)"]}]},
+    {"word": "Lisboa", "pos": "name", "senses": [{"glosses": ["Lisbon"]}]},
+    {
+        "word": "dímelo",
+        "pos": "verb",
+        "senses": [
+            {
+                "glosses": ["imperative of decir combined with me and lo"],
+                "form_of": [{"word": "decir combined with me and lo"}],
+            }
+        ],
+    },
+]
+SRT = """1
+00:00:01,000 --> 00:00:02,500
+<i>El galeón zarpó</i>
+
+2
+00:00:03,000 --> 00:00:04,000
+de Lisboa. ¿Rocamora?
+- Los barcos.
+"""
+
+
+@pytest.fixture
+def client(tmp_path: Path) -> Iterator[TestClient]:  # type: ignore[type-arg]
+    dump = tmp_path / "es.jsonl.gz"
+    with gzip.open(dump, "wt") as f:
+        f.writelines(json.dumps(e) + "\n" for e in WIKTIONARY)
+    build_dictionary("es", tmp_path / "data" / "dictionaries" / "es.sqlite", dump)
+    app = create_app(Config(db_path=tmp_path / "test.db", assume_owner=True, data_dir=tmp_path / "data"))
+    with TestClient(app=app) as c:
+        yield c
+
+
+@pytest.fixture
+def deck_id(client: TestClient) -> str:  # type: ignore[type-arg]
+    return str(client.get("/api/decks").json()[0]["id"])
+
+
+def _episode(client: TestClient) -> str:  # type: ignore[type-arg]
+    course = client.put("/api/library/courses/mdt", json={"title": "El Ministerio del Tiempo", "language": "es"})
+    assert course.status_code == 200, course.text
+    r = client.put(
+        "/api/library/texts/mdt-2",
+        json={"course_id": "mdt", "title": "Episodio 2", "position": 2, "format": "srt", "content": SRT},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["blocks"] == 2 and r.json()["format"] == "subtitles"
+    return "mdt-2"
+
+
+def _know(client: TestClient, item: dict) -> None:  # type: ignore[type-arg]
+    """Review an item's recognition card into long-term review, recently."""
+    card = next(
+        c for c in sync(client)["cards"] if c["item_id"] == item["id"] and c["template_id"] == "lexeme-recognize"
+    )
+    now = int(time.time() * 1000)
+    reviews = [
+        {
+            "id": f"{card['id']}-{i}",
+            "card_id": card["id"],
+            "rating": 3,
+            "reviewed_at": now - (3 - i) * 60_000,
+            "duration_ms": 1,
+        }
+        for i in range(3)
+    ]
+    sync(client, 0, reviews)
+
+
+def test_reading_shows_subtitles_with_word_statuses(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    text_id = _episode(client)
+    _know(
+        client, add_lexeme(client, deck_id, "zarpar", "to set sail")
+    )  # known; reached from "zarpó" via the dictionary
+    add_lexeme(client, deck_id, "barco", "boat", pos="noun")  # in the deck but never studied
+    client.put("/api/reader/marks", json={"language": "es", "words": ["el"], "status": "known"})
+
+    r = client.get(f"/api/reader/texts/{text_id}").json()
+    assert r["course_title"] == "El Ministerio del Tiempo" and r["dictionary"] is True
+    assert r["blocks"][0]["start_ms"] == 1000 and r["blocks"][0]["end_ms"] == 2500
+    assert "".join(t for t, _ in r["blocks"][0]["tokens"]) == "El galeón zarpó"  # markup dropped
+    assert r["words"] == {
+        "el": "known",  # marked
+        "galeón": "new",
+        "zarpó": "known",
+        "de": "new",
+        "lisboa": "name",  # only a name in the dictionary
+        "rocamora": "name",  # not in the dictionary, always capitalized
+        "los": "new",
+        "barcos": "learning",  # plural of a deck word that isn't known yet
+    }
+    assert r["default_deck_id"] == deck_id
+
+
+def test_review_set_words_count_as_learning(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    rs = client.post("/api/decks", json={"name": "Episode 2", "ephemeral": True}).json()["id"]
+    add_lexeme(client, rs, "galeón", "galleon", pos="noun")
+    r = client.post("/api/reader/statuses", json={"language": "es", "words": ["galeón", "barcos"]})
+    assert r.json() == {"galeón": "learning", "barcos": "new"}
+
+
+def test_word_details_suggest_the_lemma(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    d = client.get("/api/reader/word", params={"language": "es", "word": "barcos"}).json()
+    assert d["status"] == "new" and d["deck"] == []
+    assert d["dictionary"][0]["form_of"] == [{"lemma": "barco", "description": "plural of barco"}]
+    assert [e["word"] for e in d["lemma_entries"]] == ["barco"]
+    assert d["suggestion"] == {"lemma": "barco", "pos": "noun", "gloss": "boat, ship", "gender": "masculine"}
+
+    add_lexeme(client, deck_id, "barco", "boat", pos="noun")
+    d = client.get("/api/reader/word", params={"language": "es", "word": "barcos"}).json()
+    assert [(m["lemma"], m["via"], m["status"]) for m in d["deck"]] == [("barco", "dictionary", "learning")]
+
+    # clitic forms resolve to the bare verb
+    d = client.get("/api/reader/word", params={"language": "es", "word": "dímelo"}).json()
+    assert d["dictionary"][0]["form_of"][0]["lemma"] == "decir"
+
+
+def test_marks_can_be_cleared(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    for status, expected in [("ignored", "ignored"), (None, "new")]:
+        client.put("/api/reader/marks", json={"language": "es", "words": ["galeón"], "status": status})
+        assert client.post("/api/reader/statuses", json={"language": "es", "words": ["galeón"]}).json() == {
+            "galeón": expected
+        }
+
+
+def test_analyze_counts_words(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    r = client.post(
+        "/api/reader/analyze",
+        json={
+            "language": "es",
+            "format": "srt",
+            "content": SRT + SRT.replace("1\n", "3\n", 1).replace("2\n00:00:03", "4\n00:00:03"),
+        },
+    )
+    top = r.json()[0]
+    assert top["count"] == 2 and top["status"] in ("new", "name")
+
+
+def test_library_lists_courses_and_navigates(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    _episode(client)
+    client.post(
+        "/api/library/texts",
+        json={
+            "course_id": "mdt",
+            "title": "Episodio 1",
+            "position": 1,
+            "format": "text",
+            "content": "Hola.\n\nAdiós.",
+        },
+    )
+    [course] = client.get("/api/library").json()
+    assert [t["title"] for t in course["texts"]] == ["Episodio 1", "Episodio 2"]
+    r = client.get("/api/reader/texts/mdt-2").json()
+    assert r["previous_id"] == course["texts"][0]["id"] and r["next_id"] is None
+    assert client.delete("/api/library/courses/mdt").status_code == 204
+    assert client.get("/api/library").json() == []
+
+
+def test_translation_without_a_key_is_unavailable(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    r = client.post("/api/reader/translate", json={"language": "es", "kind": "text", "text": "Hola"})
+    assert r.status_code == 503 and "key" in r.json()["detail"]
+
+
+def test_without_a_dictionary_only_mid_sentence_capitals_are_names(tmp_path: Path) -> None:
+    app = create_app(Config(db_path=tmp_path / "t.db", assume_owner=True, data_dir=tmp_path / "data"))
+    with TestClient(app=app) as client:
+        r = client.post("/api/reader/statuses", json={"language": "es", "words": ["Los barcos de Lisboa. Hola."]})
+        assert r.json() == {"barcos": "new", "de": "new", "hola": "new", "lisboa": "name", "los": "new"}

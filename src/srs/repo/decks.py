@@ -62,3 +62,16 @@ def update_deck(conn: sqlite3.Connection, deck: Deck) -> None:
         "UPDATE decks SET name = ?, deleted = ?, seq = ?, ephemeral = ?, promote_to = ? WHERE id = ?",
         (deck.name, int(deck.deleted), deck.seq, int(deck.ephemeral), deck.promote_to, deck.id),
     )
+
+
+def largest_main_deck(conn: sqlite3.Connection, language: str | None) -> str | None:
+    """The main deck (not a review set) with the most words (lexemes) in `language`: where new words go by default.
+    Counting words, not items, so a deck of conjugations doesn't win."""
+    row = conn.execute(
+        "SELECT items.deck_id FROM items JOIN decks ON decks.id = items.deck_id "
+        "WHERE items.deleted = 0 AND decks.deleted = 0 AND decks.ephemeral = 0 AND items.language IS ? "
+        "AND items.kind = 'lexeme' "
+        "GROUP BY items.deck_id ORDER BY count(*) DESC LIMIT 1",
+        (language,),
+    ).fetchone()
+    return None if row is None else str(row["deck_id"])
