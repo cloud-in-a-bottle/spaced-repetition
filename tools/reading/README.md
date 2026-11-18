@@ -8,6 +8,7 @@ uv run python -m tools.reading analyze episode.srt            # what you know, w
 uv run python -m tools.reading add-text episode.srt --course-id ministerio-del-tiempo \
     --course-title "El Ministerio del Tiempo" --text-id mdt-s01e03 --title "1×03 · …" --position 3
 uv run python -m tools.reading seed-known -n 1000              # mark the 1000 commonest words known (--clear undoes)
+uv run python -m tools.reading mark-lingq known-lingqs.csv      # LingQ export -> reader "known" marks (--status clear undoes)
 uv run python -m tools.reading install-dictionary --language es
 ```
 

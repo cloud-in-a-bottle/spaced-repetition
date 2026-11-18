@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from tools.reading import content
+from tools.reading import lingq
 from tools.reading import marks
 from tools.reading.client import DEFAULT_APP_URL
 from tools.reading.client import SrsClient
@@ -35,6 +36,11 @@ def main() -> None:
     s.add_argument("-n", type=int, default=1000)
     s.add_argument("--clear", action="store_true")
 
+    m = sub.add_parser("mark-lingq", help="mark every word of a LingQ CSV export known/ignored (phrases are skipped)")
+    m.add_argument("file", type=Path)
+    m.add_argument("--language", default="es")
+    m.add_argument("--status", choices=["known", "ignored", "clear"], default="known")
+
     d = sub.add_parser("install-dictionary", help="have the app download and build an offline dictionary")
     d.add_argument("--language", default="es")
 
@@ -53,6 +59,10 @@ def main() -> None:
         words = marks.common_words(args.language, args.n)
         marks.mark(client, args.language, words, None if args.clear else "known")
         print(f"{'cleared' if args.clear else 'marked known'}: {len(words)} words")
+    elif args.cmd == "mark-lingq":
+        words, phrases = lingq.read_terms(args.file)
+        marks.mark(client, args.language, words, None if args.status == "clear" else args.status)
+        print(f"{args.status}: {len(words)} words; skipped {len(phrases)} phrases (the reader marks single words)")
     elif args.cmd == "install-dictionary":
         print(client.post(f"/dictionaries/{args.language}/install", {}))
 
