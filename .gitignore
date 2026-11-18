@@ -34,3 +34,7 @@ playwright-report/
 .claude/settings.json
 .claude/settings.local.json
 .local/
+
+# personal content dropped in for import (subtitles etc.); not part of the app
+*.srt
+*.zip
