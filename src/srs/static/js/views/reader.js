@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { getAll } from "../db.js";
 import { h, mount } from "../dom.js";
-import { sync } from "../sync.js";
+import { recordReview, sync } from "../sync.js";
 
 // Reading a text with the deck's help: words you know well are plain, new words (in no deck) and weak ones
 // (in a deck but poorly recalled or never studied) are highlighted; review sets don't count. Clicking a word opens a panel
@@ -178,6 +178,30 @@ export async function readerView(textId) {
           h("ol.dict-senses", {}, e.senses.slice(0, 5).map((s) => h("li", {}, s))))));
   }
 
+  // The card that reading a word exercises: its recognition card (word -> meaning), preferring one that isn't
+  // suspended; else whatever card the word has.
+  async function readingCard(itemId) {
+    const cards = (await getAll("cards")).filter((c) => c.item_id === itemId);
+    const rank = (c) => (c.skill === "recognize" ? 0 : 2) + (c.suspended ? 1 : 0);
+    return cards.sort((a, b) => rank(a) - rank(b))[0] ?? null;
+  }
+
+  // Recognizing a word while reading is a successful review of it: record a Good, like the Study tab would.
+  async function markReviewed(m, button) {
+    button.disabled = true;
+    button.textContent = "Recording…";
+    try {
+      const card = await readingCard(m.item_id);
+      if (!card) throw new Error("this word has no cards");
+      await recordReview(card, 3, 0);
+      await sync();
+      await refreshWords();
+      showPanel();
+    } catch (err) {
+      button.textContent = navigator.onLine ? `Couldn't record it: ${err.message}` : "Recorded; will sync when online";
+    }
+  }
+
   function deckSection(d) {
     const rows = [...d.deck, ...d.review_sets];
     if (!rows.length) return null;
@@ -191,7 +215,11 @@ export async function readerView(textId) {
             deckName(m.deck_id), " · ", STATUS_LABEL[m.status] ?? m.status,
             m.recall ? ` · ${Math.round(m.recall * 100)}% recall` : "",
             m.via === "dictionary" ? " · via dictionary form" : "", " · ",
-            h("a", { href: `#/items/${m.item_id}` }, "edit")))));
+            h("a", { href: `#/items/${m.item_id}` }, "edit")),
+          m.status === "learning"
+            ? h("button.small.mark-reviewed", { title: "Record a successful review (Good) of this word's recognition card",
+                onclick: (e) => markReviewed(m, e.currentTarget) }, "Mark as reviewed")
+            : null)));
   }
 
   function addForm(d) {
