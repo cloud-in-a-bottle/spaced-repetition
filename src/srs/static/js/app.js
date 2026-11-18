@@ -10,7 +10,7 @@ import { templatesView } from "./views/templates.js";
 
 const routes = [
   [/^#?\/?$/, () => homeView()],
-  [/^#\/study\/(.+)$/, ([deckId]) => studyView(deckId === "all" ? null : deckId)],
+  [/^#\/study\/([^/]+)(?:\/([^/]+))?$/, ([deckId, pos]) => studyView(deckId === "all" ? null : deckId, pos ?? null)],
   [/^#\/items$/, () => itemsView()],
   [/^#\/items\/new$/, () => itemEditorView(null)],
   [/^#\/items\/(.+)$/, ([id]) => itemEditorView(id)],

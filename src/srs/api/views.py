@@ -77,6 +77,7 @@ class SyncCardView:
     template_name: str
     kind: str
     skill: str
+    pos: str | None
     created_at: int
     suspended: bool
     deleted: bool
@@ -103,6 +104,7 @@ def sync_card_view(sc: SyncCard) -> SyncCardView:
         template_name=sc.template_name,
         kind=sc.item_kind,
         skill=sc.skill,
+        pos=sc.pos,
         created_at=c.created_at,
         suspended=c.suspended,
         deleted=c.deleted,

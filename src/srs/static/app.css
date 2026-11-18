@@ -63,6 +63,12 @@ button.link { border: none; background: none; color: var(--accent); padding: 0 0
 
 .deck-list { list-style: none; padding: 0; margin: 0; }
 .deck-list li { display: flex; justify-content: space-between; padding: 0.7rem 0.2rem; border-bottom: 1px solid var(--line); }
+.deck-head { display: flex; align-items: center; gap: 0.3rem; }
+.pos-toggle { border: none; background: none; padding: 0.3rem; margin-left: -0.3rem; cursor: pointer; display: inline-flex; }
+.chevron { width: 0.4rem; height: 0.4rem; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s; }
+.pos-toggle[aria-expanded="true"] .chevron { transform: rotate(45deg); }
+.deck-list li.deck-pos { padding: 0.45rem 0.2rem 0.45rem 1.4rem; font-size: 0.92rem; }
+.deck-list li.deck-pos .deck-name { color: var(--muted); }
 .counts { display: flex; gap: 0.8rem; font-variant-numeric: tabular-nums; min-width: 7rem; justify-content: flex-end; }
 .count-new { color: var(--easy); }
 .count-learning { color: var(--again); }

@@ -48,6 +48,8 @@ class SyncCard:
     item_kind: str
     skill: str
     template_name: str
+    # the item's part of speech; a form takes its lexeme's. None for phrases and facts.
+    pos: str | None
 
 
 @attr.s(auto_attribs=True, frozen=True)
@@ -61,7 +63,10 @@ class Changes:
 def changes_since(conn: sqlite3.Connection, cursor: int) -> Changes:
     rows = conn.execute(
         "SELECT cards.*, items.deck_id AS item_deck_id, items.kind AS item_kind, templates.skill AS template_skill, "
-        "templates.name AS template_name FROM cards JOIN items ON items.id = cards.item_id "
+        "templates.name AS template_name, "
+        "COALESCE(json_extract(items.data, '$.pos'), json_extract(lexemes.data, '$.pos')) AS item_pos "
+        "FROM cards JOIN items ON items.id = cards.item_id "
+        "LEFT JOIN items AS lexemes ON lexemes.id = items.lexeme_id "
         "JOIN templates ON templates.id = cards.template_id WHERE cards.seq > ? ORDER BY cards.seq",
         (cursor,),
     ).fetchall()
@@ -72,6 +77,7 @@ def changes_since(conn: sqlite3.Connection, cursor: int) -> Changes:
             item_kind=r["item_kind"],
             skill=r["template_skill"],
             template_name=r["template_name"],
+            pos=r["item_pos"],
         )
         for r in rows
     ]

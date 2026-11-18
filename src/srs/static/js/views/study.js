@@ -1,7 +1,7 @@
 import { get, getMeta } from "../db.js";
 import { formatInterval, h, mount } from "../dom.js";
 import { applyReview } from "../fsrs.js";
-import { nextCard, noteNewCardIntroduced } from "../queue.js";
+import { nextCard, noteNewCardIntroduced, posLabel } from "../queue.js";
 import { cardElement } from "../render.js";
 import { recordReview } from "../sync.js";
 
@@ -12,16 +12,16 @@ const RATINGS = [
   [4, "Easy"],
 ];
 
-export async function studyView(deckId) {
+export async function studyView(deckId, pos = null) {
   const deck = deckId ? await get("decks", deckId) : null;
-  const title = deck ? deck.name : "All decks";
+  const title = (deck ? deck.name : "All decks") + (pos ? ` · ${posLabel(pos)}` : "");
   let card = null;
   let revealed = false;
   let shownAt = 0;
   let lastId = null;
 
   async function showNext() {
-    card = await nextCard(deckId, Date.now(), lastId);
+    card = await nextCard({ deckId, pos }, Date.now(), lastId);
     revealed = false;
     shownAt = Date.now();
     render();

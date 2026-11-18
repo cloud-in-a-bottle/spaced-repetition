@@ -2,6 +2,7 @@ from litestar.testing import TestClient
 
 from srs.domain.clock import now_ms
 from tests.unit.helpers import DAY_MS
+from tests.unit.helpers import add_form
 from tests.unit.helpers import add_lexeme
 from tests.unit.helpers import sync
 
@@ -75,3 +76,20 @@ def test_first_sync_includes_settings_and_decks(client: TestClient, deck_id: str
     assert first["settings"] is not None
     assert [d["id"] for d in first["decks"]] == [deck_id]
     assert sync(client, first["cursor"])["settings"] is None
+
+
+def test_cards_carry_part_of_speech(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    lx = add_lexeme(client, deck_id, "rojo", "red", pos="noun")
+    form = add_form(client, deck_id, lx["id"], "roja", {"gender": "feminine"})
+    client.post("/api/items", json={"deck_id": deck_id, "kind": "fact", "fact": {"front": "2+2", "back": "4"}})
+    by_item = {c["item_id"]: c["pos"] for c in sync(client)["cards"]}
+    assert by_item[lx["id"]] == "noun"
+    assert by_item[form["id"]] == "noun"  # a form files under its lexeme's part of speech
+    assert None in by_item.values()  # facts have none
+
+    cursor = sync(client)["cursor"]
+    body = {k: lx[k] for k in ("deck_id", "kind", "language", "tags", "lexeme")}
+    body["lexeme"] = {**lx["lexeme"], "pos": "adjective"}
+    assert client.put(f"/api/items/{lx['id']}", json=body).status_code == 200
+    changed = {c["item_id"]: c["pos"] for c in sync(client, cursor)["cards"]}
+    assert changed == {lx["id"]: "adjective", form["id"]: "adjective"}

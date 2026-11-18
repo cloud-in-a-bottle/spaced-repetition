@@ -38,7 +38,18 @@ export async function recordReview(card, rating, durationMs) {
   return updated;
 }
 
+// Bump when synced cards gain a field, so clients pull everything again once (eg 2: cards carry `pos`).
+const DATA_VERSION = 2;
+
 async function syncOnce() {
+  if ((await getMeta("data-version")) !== DATA_VERSION) {
+    await transaction(["cards", "decks", "meta"], "readwrite", (s) => {
+      s.cards.clear();
+      s.decks.clear();
+      s.meta.delete("cursor");
+      s.meta.put(DATA_VERSION, "data-version");
+    });
+  }
   const outbox = await getAll("outbox");
   const cursor = (await getMeta("cursor")) ?? 0;
   const response = await api("POST", "/sync", { cursor, reviews: outbox });
