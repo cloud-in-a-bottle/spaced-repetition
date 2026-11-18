@@ -58,9 +58,17 @@ def find_item(conn: sqlite3.Connection, item_id: str) -> Item | None:
     return None if row is None else _from_row(row)
 
 
-def list_items(conn: sqlite3.Connection, deck_id: str | None, kind: ItemKind | None, query: str | None) -> list[Item]:
+def list_items(
+    conn: sqlite3.Connection,
+    deck_id: str | None,
+    kind: ItemKind | None,
+    query: str | None,
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[Item]:
+    """Newest first; `query` matches anywhere in the item's fields (lemma, gloss, notes...)."""
     sql = "SELECT * FROM items WHERE deleted = 0"
-    params: list[str] = []
+    params: list[str | int] = []
     if deck_id is not None:
         sql += " AND deck_id = ?"
         params.append(deck_id)
@@ -70,7 +78,10 @@ def list_items(conn: sqlite3.Connection, deck_id: str | None, kind: ItemKind | N
     if query:
         sql += " AND data LIKE ?"
         params.append(f"%{query}%")
-    sql += " ORDER BY created_at DESC"
+    sql += " ORDER BY created_at DESC, id"
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"
+        params += [limit, offset]
     return [_from_row(r) for r in conn.execute(sql, params)]
 
 

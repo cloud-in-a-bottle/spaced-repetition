@@ -104,6 +104,8 @@ button.link { border: none; background: none; color: var(--accent); padding: 0 0
 
 .filters { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
 .filters input { flex: 1; }
+.filters select { width: auto; }
+.items-more { padding: 1rem 0 2rem; text-align: center; }
 input, select, textarea {
   font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: 0.4rem;
   background: var(--bg); color: var(--fg); width: 100%;

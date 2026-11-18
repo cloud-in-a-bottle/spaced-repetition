@@ -103,3 +103,14 @@ def test_article_shown_with_lemma_not_in_features(client: TestClient, deck_id: s
     card = next(c for c in sync(client)["cards"] if c["template_id"] == "lexeme-recognize")
     assert "la casa" in card["front_html"]
     assert "feminine" in card["back_html"] and "feminine · la" not in card["back_html"]
+
+
+def test_items_are_paged(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    for w in ["uno", "dos", "tres"]:
+        add_lexeme(client, deck_id, w, w, pos="numeral")
+    first = client.get("/api/items", params={"limit": 2}).json()
+    rest = client.get("/api/items", params={"limit": 2, "offset": 2}).json()
+    assert len(first) == 2 and len(rest) == 1
+    assert {i["lexeme"]["lemma"] for i in first + rest} == {"uno", "dos", "tres"}
+    assert [i["lexeme"]["lemma"] for i in client.get("/api/items", params={"q": "dos"}).json()] == ["dos"]
+    assert client.get("/api/items", params={"limit": 0}).status_code == 400

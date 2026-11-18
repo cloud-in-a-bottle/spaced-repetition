@@ -31,9 +31,14 @@ def items_index(
     deck_id: FromQuery[str | None] = None,
     kind: FromQuery[ItemKind | None] = None,
     q: FromQuery[str | None] = None,
+    limit: FromQuery[int] = 100,
+    offset: FromQuery[int] = 0,
 ) -> list[ItemView]:
+    """A page of items (newest first). Ask for one more than you show to know whether there's another page."""
+    if not 1 <= limit <= 1000 or offset < 0:
+        raise InvalidRequest("limit must be 1-1000 and offset >= 0")
     with db.transaction() as conn:
-        items = list_items(conn, deck_id, kind, q)
+        items = list_items(conn, deck_id, kind, q, limit, offset)
         cards = cards_for_items(conn, [i.id for i in items])
     return [item_view(i, [c for c in cards if c.item_id == i.id]) for i in items]
 
