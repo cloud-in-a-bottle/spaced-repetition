@@ -48,6 +48,19 @@ WIKTIONARY = [
     {"word": "barco", "pos": "noun", "senses": [{"glosses": ["boat, ship"], "tags": ["masculine"]}]},
     {"word": "barcos", "pos": "noun", "senses": [{"glosses": ["plural of barco"], "form_of": [{"word": "barco"}]}]},
     {"word": "el", "pos": "article", "senses": [{"glosses": ["the"]}]},
+    {"word": "lista", "pos": "noun", "senses": [{"glosses": ["list"], "tags": ["feminine"]}]},
+    {
+        "word": "lista",
+        "pos": "adj",
+        "senses": [{"glosses": ["feminine singular of listo"], "form_of": [{"word": "listo"}]}],
+    },
+    {
+        "word": "lista",
+        "pos": "verb",
+        "senses": [{"glosses": ["inflection of listar:"], "form_of": [{"word": "listar"}]}],
+    },
+    {"word": "listo", "pos": "adj", "senses": [{"glosses": ["ready; clever"]}]},
+    {"word": "listar", "pos": "verb", "senses": [{"glosses": ["to list"]}]},
     {"word": "los", "pos": "article", "senses": [{"glosses": ["the (masculine plural)"]}]},
     {"word": "Lisboa", "pos": "name", "senses": [{"glosses": ["Lisbon"]}]},
     {
@@ -247,3 +260,32 @@ def test_srt_line_wraps_and_split_sentences_are_joined() -> None:
         ("¡Rocamora!\n- ¿Qué?", 5000, 6000),  # so does a new speaker
         ("Para estar en 2015 pasando calamidades, en mi tiempo me cunde más.", 7000, 10000),  # merged cues
     ]
+
+
+def test_known_marks_go_on_roots(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    statuses = lambda *ws: client.post("/api/reader/statuses", json={"language": "es", "words": list(ws)}).json()  # noqa: E731
+    # knowing one form knows the root, and so every other form
+    client.put("/api/reader/marks", json={"language": "es", "words": ["barcos"], "status": "known"})
+    assert statuses("barco", "barcos") == {"barco": "known", "barcos": "known"}
+    d = client.get("/api/reader/word", params={"language": "es", "word": "barcos"}).json()
+    assert (d["mark"], d["mark_root"], d["roots"]) == ("known", "barco", ["barco"])
+    # clearing from any form clears the root
+    client.put("/api/reader/marks", json={"language": "es", "words": ["barcos"], "status": None})
+    assert statuses("barco", "barcos") == {"barco": "new", "barcos": "new"}
+
+    # ignoring is per spelling
+    client.put("/api/reader/marks", json={"language": "es", "words": ["zarpó"], "status": "ignored"})
+    assert statuses("zarpó", "zarpar") == {"zarpó": "ignored", "zarpar": "new"}
+
+
+def test_a_word_with_two_roots_lets_you_pick(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    d = client.get("/api/reader/word", params={"language": "es", "word": "lista"}).json()
+    assert d["roots"] == ["lista", "listar", "listo"]
+    # unpicked, a headword is its own root
+    client.put("/api/reader/marks", json={"language": "es", "words": ["lista"], "status": "known"})
+    r = client.post("/api/reader/statuses", json={"language": "es", "words": ["lista", "listo", "listar"]}).json()
+    assert r == {"lista": "known", "listo": "new", "listar": "new"}
+    client.put("/api/reader/marks", json={"language": "es", "words": ["lista"], "status": None})
+    client.put("/api/reader/marks", json={"language": "es", "words": ["lista"], "status": "known", "roots": ["listo"]})
+    r = client.post("/api/reader/statuses", json={"language": "es", "words": ["lista", "listo", "listar"]}).json()
+    assert r == {"lista": "known", "listo": "known", "listar": "new"}

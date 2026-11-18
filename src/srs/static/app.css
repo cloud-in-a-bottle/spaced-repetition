@@ -197,7 +197,7 @@ body.reading main { max-width: 76rem; }
 .add-row { display: flex; gap: 0.4rem; }
 .add-row > * { flex: 1; min-width: 0; }
 .add-row button { flex: 0 0 auto; }
-.panel-marks { display: flex; gap: 0.5rem; align-items: center; }
+.panel-marks { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 
 @media (max-width: 52rem) {
   .reader { display: block; }

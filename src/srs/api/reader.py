@@ -23,7 +23,7 @@ from srs.reader import library
 from srs.reader.text_formats import parse_content
 from srs.reader.text_formats import tokenize
 from srs.reader.words import WordDetails
-from srs.reader.words import set_marks
+from srs.reader.words import mark_words
 from srs.reader.words import word_details
 from srs.reader.words import word_statuses
 from srs.repo.decks import largest_main_deck
@@ -255,16 +255,19 @@ def reading_word(db: Db, dicts: Dicts, language: FromQuery[str], word: FromQuery
 class MarksInput:
     language: str
     words: list[str]
-    # `known`, `ignored`, or null to clear
+    # `known` (on the words' roots), `ignored` (on the exact spellings), or null to clear both
     status: str | None
+    # for `known`: mark these roots instead of all the words' roots (eg "casa" but not "casar" for "casas")
+    roots: list[str] | None = None
 
 
 @put("/reader/marks", sync_to_thread=True)
-def reading_marks(db: Db, data: JSONBody[MarksInput]) -> None:
+def reading_marks(db: Db, dicts: Dicts, data: JSONBody[MarksInput]) -> None:
     if data.status not in ("known", "ignored", None):
         raise InvalidRequest("status must be `known`, `ignored` or null")
+    dictionary = dicts.get(data.language)
     with db.transaction() as conn:
-        set_marks(conn, data.language, data.words, data.status, now_ms())
+        mark_words(conn, dictionary, data.language, data.words, data.status, now_ms(), data.roots)
 
 
 @attr.s(auto_attribs=True, frozen=True)

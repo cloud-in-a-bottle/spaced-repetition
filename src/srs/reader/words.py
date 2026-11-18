@@ -53,8 +53,47 @@ def marks(conn: sqlite3.Connection, language: str, keys: list[str]) -> dict[str,
     return result
 
 
-def set_marks(conn: sqlite3.Connection, language: str, words: list[str], status: str | None, now: int) -> None:
-    keys = sorted({lookup_key(w) for w in words})
+def roots_of(dictionary: Dictionary | None, word: str) -> list[str]:
+    """Where a "known" mark for `word` goes: its root forms per the dictionary (itself first if it's a headword
+    too), so knowing "abandona" covers abandonar and all its forms, like deck cards do. Words the dictionary
+    doesn't know are their own root."""
+    key = lookup_key(word)
+    lemmas = dictionary.lemmas(key) if dictionary is not None else set()
+    return sorted(lemmas, key=lambda k: (k != key, k)) or [key]
+
+
+def default_roots(dictionary: Dictionary | None, word: str) -> list[str]:
+    """The roots "known" goes on when nobody picks: a word that's a headword itself is its own root ("para", not
+    parar and parir; "abierto", not abrir), and only a pure inflection spreads to what it inflects ("zarpó" ->
+    zarpar, "fuese" -> ir and ser)."""
+    roots = roots_of(dictionary, word)
+    return roots[:1] if roots[0] == lookup_key(word) else roots
+
+
+def mark_words(
+    conn: sqlite3.Connection,
+    dictionary: Dictionary | None,
+    language: str,
+    words: list[str],
+    status: str | None,
+    now: int,
+    roots: list[str] | None = None,
+) -> None:
+    """`known` marks the words' roots (see default_roots, unless `roots` picks); `ignored` marks the exact
+    spellings (names, foreign words); None clears both the spellings and all their roots."""
+    exact = sorted({lookup_key(w) for w in words})
+    if status == "ignored":
+        set_marks(conn, language, exact, status, now)
+    elif status == "known":
+        targets = {lookup_key(r) for r in roots} if roots else {r for w in words for r in default_roots(dictionary, w)}
+        set_marks(conn, language, sorted(targets), status, now)
+    else:
+        set_marks(conn, language, sorted({*exact, *(r for w in words for r in roots_of(dictionary, w))}), None, now)
+
+
+def set_marks(conn: sqlite3.Connection, language: str, keys: list[str], status: str | None, now: int) -> None:
+    """Low level: set or clear marks on exactly these keys."""
+    keys = sorted({lookup_key(k) for k in keys})
     if status is None:
         conn.executemany("DELETE FROM word_marks WHERE language = ? AND key = ?", [(language, k) for k in keys])
         return
@@ -110,9 +149,14 @@ def gather(
         candidates=candidates,
         deck=deck,
         matched_by_form=by_form,
-        marks=marks(conn, language, keys),
+        marks=marks(conn, language, everything),
         review_sets=_review_set_items(conn, language, everything),
     )
+
+
+def known_root(ctx: WordContext, key: str) -> str | None:
+    """The root a word is marked known through, if any."""
+    return next((c for c in sorted(ctx.candidates[key]) if c != key and ctx.marks.get(c) == Status.KNOWN), None)
 
 
 def status_of(ctx: WordContext, key: str) -> str:
@@ -122,8 +166,10 @@ def status_of(ctx: WordContext, key: str) -> str:
         return Status.KNOWN
     if statuses:
         return Status.LEARNING
-    if key in ctx.marks:
+    if key in ctx.marks:  # this spelling: known or ignored
         return ctx.marks[key]
+    if known_root(ctx, key) is not None:
+        return Status.KNOWN
     # review sets are throwaway cramming decks, not knowledge: a word only in one is still new (the word panel
     # lists the review set)
     return Status.NEW
@@ -201,7 +247,11 @@ class WordDetails:
     word: str
     key: str
     status: str
+    # `known` / `ignored` for this spelling, or `known` through a root (see `mark_root`)
     mark: str | None
+    mark_root: str | None
+    # where "I know this" would put the mark (see roots_of); several for words like "casas" (casa / casar)
+    roots: list[str]
     deck: list[DeckMatch]
     review_sets: list[DeckMatch]
     dictionary: list[DictEntry]
@@ -297,7 +347,9 @@ def word_details(
         word=word,
         key=key,
         status=status_of(ctx, key),
-        mark=ctx.marks.get(key),
+        mark=ctx.marks.get(key) or ("known" if known_root(ctx, key) else None),
+        mark_root=None if key in ctx.marks else known_root(ctx, key),
+        roots=roots_of(dictionary, word),
         deck=deck,
         review_sets=review_sets,
         dictionary=entries,

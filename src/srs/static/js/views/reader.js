@@ -160,8 +160,9 @@ export async function readerView(textId) {
     for (const s of document.querySelectorAll(".w.selected")) s.classList.remove("selected");
   }
 
-  async function setMark(status) {
-    await api("PUT", "/reader/marks", { language: reading.language, words: [selected.key], status });
+  // "known" goes on the word's root(s) (all its forms count, like cards); `roots` picks one when there are several
+  async function setMark(status, roots = null) {
+    await api("PUT", "/reader/marks", { language: reading.language, words: [selected.key], status, roots });
     await refreshWords();
     showPanel();
   }
@@ -311,11 +312,16 @@ export async function readerView(textId) {
       inDeck ? null : addForm(d),
       h("div.panel-marks", {},
         d.mark === "known" || d.mark === "ignored"
-          ? [h("span.muted.small", {}, `Marked ${d.mark}. `), h("button.link", { onclick: () => setMark(null) }, "undo")]
+          ? [h("span.muted.small", {}, d.mark_root ? `Known (as ${d.mark_root}). ` : `Marked ${d.mark}. `),
+             h("button.link", { onclick: () => setMark(null) }, "undo")]
           : inDeck
             ? null
-            : [h("button", { onclick: () => setMark("known") }, "I know this"),
-               h("button", { onclick: () => setMark("ignored") }, "Ignore")]),
+            : [
+                d.roots.length > 1
+                  ? d.roots.map((r) => h("button", { onclick: () => setMark("known", [r]), title: `Mark ${r} and all its forms known` }, `I know ${r}`))
+                  : h("button", { onclick: () => setMark("known"), title: d.roots[0] && d.roots[0] !== d.key ? `Marks ${d.roots[0]} and all its forms known` : "" }, "I know this"),
+                h("button", { onclick: () => setMark("ignored"), title: "Don't highlight this spelling (names, foreign words)" }, "Ignore"),
+              ]),
     ].filter(Boolean));
   }
 
