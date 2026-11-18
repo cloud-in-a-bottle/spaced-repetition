@@ -23,7 +23,7 @@ KNOWN_RECALL = 0.8
 
 class Status:
     KNOWN = "known"  # in a main deck and recalled well: no highlight
-    LEARNING = "learning"  # in a main deck but weak, new or suspended, or being studied in a review set
+    LEARNING = "learning"  # in a main deck but weak, never studied, or suspended
     NEW = "new"  # not in any deck: highlighted
     IGNORED = "ignored"  # marked by the owner as not worth learning (names, foreign words)
     NAME = "name"  # looks like a proper noun: no highlight
@@ -123,8 +123,8 @@ def status_of(ctx: WordContext, key: str) -> str:
         return Status.LEARNING
     if key in ctx.marks:
         return ctx.marks[key]
-    if any(ctx.review_sets.get(c) for c in ctx.candidates[key]):
-        return Status.LEARNING
+    # review sets are throwaway cramming decks, not knowledge: a word only in one is still new (the word panel
+    # lists the review set)
     return Status.NEW
 
 
@@ -177,6 +177,7 @@ class DeckMatch:
     lemma: str
     pos: str
     gloss: str
+    # a reading status (see Status), or "review_set" for review-set entries
     status: str
     recall: float
     # how the clicked word reached it: "word" (its lemma or one of its forms) or "dictionary" (via the lemma
@@ -267,7 +268,7 @@ def word_details(
                     lemma=data.get("lemma", ""),
                     pos=data.get("pos", ""),
                     gloss=data.get("gloss", ""),
-                    status=Status.LEARNING,
+                    status="review_set",
                     recall=0.0,
                     via="word" if c == key else "dictionary",
                 )

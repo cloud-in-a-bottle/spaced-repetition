@@ -4,7 +4,7 @@ import { h, mount } from "../dom.js";
 import { sync } from "../sync.js";
 
 // Reading a text with the deck's help: words you know well are plain, new words (in no deck) and weak ones
-// (in a deck but poorly recalled, or being studied in a review set) are highlighted. Clicking a word opens a panel
+// (in a deck but poorly recalled or never studied) are highlighted; review sets don't count. Clicking a word opens a panel
 // with what the deck and the offline dictionary know, translation in context, and buttons to add it or mark it.
 
 const STATUS_LABEL = {
@@ -13,6 +13,7 @@ const STATUS_LABEL = {
   new: "New",
   ignored: "Ignored",
   name: "Name",
+  review_set: "review set",
 };
 
 const POS_OPTIONS = ["noun", "verb", "adjective", "adverb", "pronoun", "determiner", "preposition", "conjunction",

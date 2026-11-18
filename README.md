@@ -28,7 +28,7 @@ does the owner know?").
 The **Read** tab is a LingQ / Language Reactor style reader (`src/srs/reader/`, `src/srs/api/reader.py`). A
 library of courses holds texts (pasted text, or `.srt` subtitles shown as timed lines). Words are coloured by what
 the deck says: plain if you know them (in a main deck, FSRS recall ≥ 80%), yellow if you're weak on them (in a
-deck but poorly recalled, never studied, or in a review set), blue if they're in no deck. Words you mark "I know
+deck but poorly recalled or never studied), blue if they're in no main deck (review sets don't count). Words you mark "I know
 this" or "Ignore" in the reader are plain too, as are words that look like names.
 
 Clicking a word opens a panel with its deck entries, an offline dictionary (Wiktionary via kaikki.org, built on the

@@ -126,11 +126,13 @@ def test_reading_shows_subtitles_with_word_statuses(client: TestClient, deck_id:
     assert r["default_deck_id"] == deck_id
 
 
-def test_review_set_words_count_as_learning(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+def test_review_set_words_stay_new(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
     rs = client.post("/api/decks", json={"name": "Episode 2", "ephemeral": True}).json()["id"]
     add_lexeme(client, rs, "galeón", "galleon", pos="noun")
     r = client.post("/api/reader/statuses", json={"language": "es", "words": ["galeón", "barcos"]})
-    assert r.json() == {"galeón": "learning", "barcos": "new"}
+    assert r.json() == {"galeón": "new", "barcos": "new"}
+    d = client.get("/api/reader/word", params={"language": "es", "word": "galeón"}).json()
+    assert [m["deck_id"] for m in d["review_sets"]] == [rs]  # still shown in the word panel
 
 
 def test_word_details_suggest_the_lemma(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
