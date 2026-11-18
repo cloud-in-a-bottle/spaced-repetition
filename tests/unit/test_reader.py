@@ -10,6 +10,7 @@ from litestar.testing import TestClient
 from srs.app import create_app
 from srs.config import Config
 from srs.dictionary.build import build_dictionary
+from srs.reader.text_formats import parse_srt
 from tests.unit.helpers import add_lexeme
 from tests.unit.helpers import sync
 
@@ -62,7 +63,7 @@ WIKTIONARY = [
 ]
 SRT = """1
 00:00:01,000 --> 00:00:02,500
-<i>El galeón zarpó</i>
+<i>El galeón zarpó.</i>
 
 2
 00:00:03,000 --> 00:00:04,000
@@ -129,7 +130,7 @@ def test_reading_shows_subtitles_with_word_statuses(client: TestClient, deck_id:
     r = client.get(f"/api/reader/texts/{text_id}").json()
     assert r["course_title"] == "El Ministerio del Tiempo" and r["dictionary"] is True
     assert r["blocks"][0]["start_ms"] == 1000 and r["blocks"][0]["end_ms"] == 2500
-    assert "".join(t for t, _ in r["blocks"][0]["tokens"]) == "El galeón zarpó"  # markup dropped
+    assert "".join(t for t, _ in r["blocks"][0]["tokens"]) == "El galeón zarpó."  # markup dropped
     assert r["words"] == {
         "el": "known",  # marked
         "galeón": "new",
@@ -230,3 +231,19 @@ def test_verb_forms_get_english_and_a_verb_class(client: TestClient, deck_id: st
     d = client.get("/api/reader/word", params={"language": "es", "word": "tuve"}).json()
     assert d["dictionary"][0]["form_of"][0]["english"] == "I had"
     assert d["lemma_entries"][0]["verb_class"] == {"label": "irregular", "notes": ["e→ie"]}
+
+
+def test_srt_line_wraps_and_split_sentences_are_joined() -> None:
+    srt = (
+        "1\n00:00:01,000 --> 00:00:02,000\nJulián, cógelo, que no\nencuentro mi cartera.\n\n"
+        "2\n00:00:03,000 --> 00:00:04,000\n¿Quién es?\nDebe de ser tu amante.\n\n"
+        "3\n00:00:05,000 --> 00:00:06,000\n¡Rocamora!\n- ¿Qué?\n\n"
+        "4\n00:00:07,000 --> 00:00:08,000\nPara estar en 2015 pasando calamidades,\n\n"
+        "5\n00:00:09,000 --> 00:00:10,000\nen mi tiempo me cunde más.\n"
+    )
+    assert [(b.text, b.start_ms, b.end_ms) for b in parse_srt(srt)] == [
+        ("Julián, cógelo, que no encuentro mi cartera.", 1000, 2000),  # a wrap
+        ("¿Quién es?\nDebe de ser tu amante.", 3000, 4000),  # a finished sentence keeps its line
+        ("¡Rocamora!\n- ¿Qué?", 5000, 6000),  # so does a new speaker
+        ("Para estar en 2015 pasando calamidades, en mi tiempo me cunde más.", 7000, 10000),  # merged cues
+    ]
