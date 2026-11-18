@@ -89,6 +89,8 @@ button.link { border: none; background: none; color: var(--accent); padding: 0 0
 
 .study { display: flex; flex-direction: column; min-height: calc(100dvh - 6rem); }
 .study-meta { display: flex; gap: 1rem; font-size: 0.85rem; justify-content: space-between; }
+.undo { font-size: 0.85rem; margin-right: 0.4rem; }
+.undo .key-hint { margin-left: 0.3rem; }
 .card-host { flex: 1; padding: 2rem 0; }
 .study-actions { display: flex; gap: 0.5rem; position: sticky; bottom: 0; padding: 0.8rem 0; background: var(--bg); }
 .study-actions button { flex: 1; padding: 0.8rem 0.2rem; display: flex; flex-direction: column; align-items: center; }

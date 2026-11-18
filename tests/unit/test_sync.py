@@ -93,3 +93,23 @@ def test_cards_carry_part_of_speech(client: TestClient, deck_id: str) -> None:  
     assert client.put(f"/api/items/{lx['id']}", json=body).status_code == 200
     changed = {c["item_id"]: c["pos"] for c in sync(client, cursor)["cards"]}
     assert changed == {lx["id"]: "adjective", form["id"]: "adjective"}
+
+
+def test_undo_voids_a_review(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    card = _recognize_card(client, deck_id)
+    t = now_ms()
+    sync(client, 0, [_review(card["id"], "r1", 3, t - 60_000), _review(card["id"], "r2", 1, t)])
+    lapsed = next(c for c in sync(client)["cards"] if c["id"] == card["id"])
+    r = client.post("/api/sync", json={"cursor": 0, "reviews": [], "voids": ["r2"]})
+    undone = next(c for c in r.json()["cards"] if c["id"] == card["id"])
+    assert (lapsed["reps"], undone["reps"]) == (2, 1)
+    # voiding again, or re-sending the voided review, changes nothing
+    client.post("/api/sync", json={"cursor": 0, "reviews": [_review(card["id"], "r2", 1, t)], "voids": ["r2"]})
+    assert next(c for c in sync(client)["cards"] if c["id"] == card["id"])["reps"] == 1
+
+
+def test_a_void_can_arrive_before_its_review(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    card = _recognize_card(client, deck_id)
+    client.post("/api/sync", json={"cursor": 0, "reviews": [], "voids": ["early"]})
+    sync(client, 0, [_review(card["id"], "early", 3, now_ms())])
+    assert next(c for c in sync(client)["cards"] if c["id"] == card["id"])["reps"] == 0

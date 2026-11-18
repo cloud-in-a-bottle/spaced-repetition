@@ -17,10 +17,17 @@ async function newCardsIntroduced(dayKey) {
   return counter[dayKey] ?? 0;
 }
 
+// Returns the study day it counted against, so an undo can take it back.
 export async function noteNewCardIntroduced(now, settings) {
   const { key } = studyDay(now, settings);
   const counter = (await getMeta("new-introduced")) ?? {};
   await setMeta("new-introduced", { [key]: (counter[key] ?? 0) + 1 });
+  return key;
+}
+
+export async function unnoteNewCardIntroduced(dayKey) {
+  const counter = (await getMeta("new-introduced")) ?? {};
+  if (counter[dayKey]) await setMeta("new-introduced", { ...counter, [dayKey]: counter[dayKey] - 1 });
 }
 
 // Review sets are for cramming: their new cards ignore the daily limit (and don't use it up), and they stay out of
@@ -102,11 +109,12 @@ function classify(card, now, day) {
 // The next card to show for `filter` ({deckId, pos}; see matches), or null when done for today.
 // Order: learning cards that are due, then reviews (most overdue first), then new cards (oldest first). Learning
 // cards due within the next 20 minutes are shown early if nothing else is left.
-export async function nextCard(filter, now, excludeId = null) {
+// `cachedCards` lets a caller that keeps them in memory (the study screen) skip reading them all from IndexedDB.
+export async function nextCard(filter, now, excludeId = null, cachedCards = null) {
   const settings = await getMeta("settings");
   const day = studyDay(now, settings);
   const reviewSets = await reviewSetIds();
-  const allCards = await getAll("cards");
+  const allCards = cachedCards ?? (await getAll("cards"));
   const buried = buriedToday(allCards, day);
   const cards = allCards.filter(
     (c) => matches(c, filter, reviewSets) && !c.suspended && c.id !== excludeId && !buried(c),

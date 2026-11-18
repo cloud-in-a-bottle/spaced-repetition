@@ -15,8 +15,23 @@ from srs.repo.items import get_item
 from srs.repo.items import main_twin
 from srs.repo.reviews import find_review
 from srs.repo.reviews import insert_review
+from srs.repo.reviews import insert_void
 from srs.repo.settings import load_settings
 from srs.repo.settings import settings_seq
+
+
+def record_voids(conn: sqlite3.Connection, review_ids: list[str], seq: int, now: int) -> None:
+    """Undo reviews: void them and replay their cards. A void for a review that hasn't arrived yet is kept, and
+    applies when it does (eg the review was in flight from another sync when it was undone)."""
+    touched = set()
+    for review_id in review_ids:
+        if insert_void(conn, review_id, now):
+            review = find_review(conn, review_id)
+            if review is not None:
+                touched.add(review.card_id)
+    settings = load_settings(conn)
+    for card_id in sorted(touched):
+        replay_card(conn, card_id, settings, seq)
 
 
 def record_reviews(conn: sqlite3.Connection, reviews: list[Review], seq: int, now: int) -> int:

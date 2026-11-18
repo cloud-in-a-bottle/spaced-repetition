@@ -22,9 +22,12 @@ export async function refreshPendingCount() {
 }
 
 // Record a review locally: update the card's schedule now (so studying works offline) and queue it for the server.
-export async function recordReview(card, rating, durationMs) {
+export function newReview(card, rating, durationMs) {
+  return { id: crypto.randomUUID(), card_id: card.id, rating, reviewed_at: Date.now(), duration_ms: durationMs };
+}
+
+export async function recordReview(card, rating, durationMs, review = newReview(card, rating, durationMs)) {
   const settings = await getMeta("settings");
-  const review = { id: crypto.randomUUID(), card_id: card.id, rating, reviewed_at: Date.now(), duration_ms: durationMs };
   // re-read the card in case a sync replaced it while it was on screen
   const updated = await transaction(["cards", "outbox"], "readwrite", async (s, done) => {
     const current = (await done(s.cards.get(card.id))) ?? card;
@@ -36,6 +39,19 @@ export async function recordReview(card, rating, durationMs) {
   await refreshPendingCount();
   sync().catch(() => {});
   return updated;
+}
+
+// Undo a review: put the card back as it was and void the review, which the server then leaves out of scheduling.
+// The void is sent even if the review never left this device, in case a sync was carrying it at that moment.
+export async function undoReview(before, reviewId) {
+  await transaction(["cards", "outbox", "meta"], "readwrite", async (s, done) => {
+    s.cards.put(before);
+    s.outbox.delete(reviewId);
+    const voids = (await done(s.meta.get("voids"))) ?? [];
+    s.meta.put([...voids, reviewId], "voids");
+  });
+  await refreshPendingCount();
+  sync().catch(() => {});
 }
 
 // Bump when synced cards gain a field, so clients pull everything again once (2: cards carry `pos`; 3: review sets).
@@ -51,12 +67,15 @@ async function syncOnce() {
     });
   }
   const outbox = await getAll("outbox");
+  const voids = (await getMeta("voids")) ?? [];
   const cursor = (await getMeta("cursor")) ?? 0;
-  const response = await api("POST", "/sync", { cursor, reviews: outbox });
+  const response = await api("POST", "/sync", { cursor, reviews: outbox, voids });
   const sentIds = new Set(outbox.map((r) => r.id));
   const settings = response.settings ?? (await getMeta("settings"));
   await transaction(["cards", "decks", "outbox", "meta"], "readwrite", async (s, done) => {
     for (const id of sentIds) s.outbox.delete(id);
+    const sentVoids = new Set(voids);
+    s.meta.put(((await done(s.meta.get("voids"))) ?? []).filter((id) => !sentVoids.has(id)), "voids");
     // Reviews made while this request was in flight aren't in the server's state yet; re-apply them on top.
     const stillPending = (await done(s.outbox.getAll())).filter((r) => !sentIds.has(r.id));
     for (const card of response.cards) {

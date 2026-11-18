@@ -16,7 +16,8 @@ does the owner know?").
   app; defaults are in `src/srs/render/default_templates.py`.
 - A **card** is one (item, template) pair. Its schedule is FSRS state.
 - **Reviews** are an append-only log, the source of truth for scheduling.
-- **Studying** has two answers, Again and Good (keys 1 and 2/space). Like anki, reviewing one card of an item buries
+- **Studying** has two answers, Again and Good (keys 1 and 2/space), and Undo (u) steps back through the session's answers by voiding
+  reviews (`voided_reviews`; the server leaves them out of replays). Like anki, reviewing one card of an item buries
   its other new and review cards until the next study day (`src/srs/static/js/queue.js`).
 - **Review sets** are throwaway decks for cramming (eg the words of one TV episode; `src/srs/core/review_sets.py`).
   Their items stay out of the knowledge service, their new cards ignore the daily limit, and they're left out of

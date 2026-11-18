@@ -34,10 +34,24 @@ def insert_review(conn: sqlite3.Connection, review: Review, received_at: int) ->
 
 
 def reviews_for_card(conn: sqlite3.Connection, card_id: str) -> list[Review]:
-    rows = conn.execute("SELECT * FROM reviews WHERE card_id = ? ORDER BY reviewed_at, id", (card_id,))
+    """The card's reviews that count: undone (voided) ones are left out."""
+    rows = conn.execute(
+        "SELECT * FROM reviews WHERE card_id = ? AND id NOT IN (SELECT review_id FROM voided_reviews) "
+        "ORDER BY reviewed_at, id",
+        (card_id,),
+    )
     return [_from_row(r) for r in rows]
 
 
 def find_review(conn: sqlite3.Connection, review_id: str) -> Review | None:
     row = conn.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)).fetchone()
     return None if row is None else _from_row(row)
+
+
+def insert_void(conn: sqlite3.Connection, review_id: str, received_at: int) -> bool:
+    """Idempotent: returns False if this review was already voided."""
+    cursor = conn.execute(
+        "INSERT INTO voided_reviews (review_id, received_at) VALUES (?, ?) ON CONFLICT (review_id) DO NOTHING",
+        (review_id, received_at),
+    )
+    return cursor.rowcount == 1

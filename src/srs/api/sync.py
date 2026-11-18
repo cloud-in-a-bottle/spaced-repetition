@@ -7,6 +7,7 @@ from srs.api.views import SyncCardView
 from srs.api.views import sync_card_view
 from srs.core.sync import changes_since
 from srs.core.sync import record_reviews
+from srs.core.sync import record_voids
 from srs.domain.clock import now_ms
 from srs.domain.errors import InvalidRequest
 from srs.domain.schedule import Rating
@@ -31,6 +32,8 @@ class ReviewInput:
 class SyncRequest:
     cursor: int
     reviews: list[ReviewInput] = attr.Factory(list)
+    # ids of reviews to undo
+    voids: list[str] = attr.Factory(list)
 
 
 @attr.s(auto_attribs=True, frozen=True)
@@ -65,6 +68,8 @@ def sync(db: Db, data: JSONBody[SyncRequest]) -> SyncResponse:
     with db.transaction() as conn:
         if reviews:
             record_reviews(conn, reviews, next_seq(conn), now)
+        if data.voids:
+            record_voids(conn, data.voids, next_seq(conn), now)
         changes = changes_since(conn, data.cursor)
     return SyncResponse(
         cursor=changes.cursor,
