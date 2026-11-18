@@ -6,11 +6,10 @@ import { nextCard, noteNewCardIntroduced, posLabel } from "../queue.js";
 import { cardElement } from "../render.js";
 import { recordReview, sync } from "../sync.js";
 
+// Just pass/fail: FSRS works fine without Hard and Easy, and deciding between them is a distraction.
 const RATINGS = [
-  [1, "Again"],
-  [2, "Hard"],
-  [3, "Good"],
-  [4, "Easy"],
+  [1, "Again", "1"],
+  [3, "Good", "2"],
 ];
 
 export async function studyView(deckId, pos = null) {
@@ -86,13 +85,13 @@ export async function studyView(deckId, pos = null) {
     }
     const settings = await getMeta("settings");
     const now = Date.now();
-    const buttons = RATINGS.map(([rating, label]) => {
+    const buttons = RATINGS.map(([rating, label, key]) => {
       const next = applyReview(card, { id: "preview", rating, reviewed_at: now }, settings);
       return h(
         `button.grade.grade-${rating}`,
         { onclick: () => grade(rating) },
         h("span.grade-label", {}, label),
-        h("span.grade-interval", {}, formatInterval(next.due - now)),
+        h("span.grade-interval", {}, `${formatInterval(next.due - now)} · ${key}`),
       );
     });
     mount(
@@ -125,8 +124,9 @@ export async function studyView(deckId, pos = null) {
       else grade(3);
     } else if (reviewSet && e.key === "a") {
       promote();
-    } else if (revealed && ["1", "2", "3", "4"].includes(e.key)) {
-      grade(Number(e.key));
+    } else if (revealed) {
+      const rating = RATINGS.find(([, , key]) => key === e.key);
+      if (rating) grade(rating[0]);
     }
   }
 

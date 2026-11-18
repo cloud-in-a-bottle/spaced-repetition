@@ -62,14 +62,34 @@ export async function dueCounts(now) {
       counts[key][kind] += 1;
     }
   };
-  for (const card of await getAll("cards")) {
-    const kind = classify(card, now, day);
+  const allCards = await getAll("cards");
+  const buried = buriedToday(allCards, day);
+  for (const card of allCards) {
+    const kind = buried(card) ? null : classify(card, now, day);
     if (kind) bump(card, kind);
   }
   for (const [key, c] of Object.entries(counts)) {
     if (!reviewSets.has(key.split("|")[0])) c.new = Math.min(c.new, newLeft);
   }
   return counts;
+}
+
+// Like anki's "bury siblings": once one card of an item is reviewed today, its other new and review cards wait for
+// the next study day, so you don't see "hablar -> to speak" right after "to speak -> hablar". Cards in their
+// learning steps aren't buried. Returns a predicate over cards.
+function buriedToday(cards, day) {
+  const reviewedToday = new Map(); // item id -> ids of its cards reviewed today
+  for (const c of cards) {
+    if (c.last_review !== null && c.last_review >= day.start) {
+      if (!reviewedToday.has(c.item_id)) reviewedToday.set(c.item_id, new Set());
+      reviewedToday.get(c.item_id).add(c.id);
+    }
+  }
+  return (card) => {
+    if (card.state !== "new" && card.state !== "review") return false;
+    const reviewed = reviewedToday.get(card.item_id);
+    return reviewed !== undefined && [...reviewed].some((id) => id !== card.id);
+  };
 }
 
 function classify(card, now, day) {
@@ -86,7 +106,11 @@ export async function nextCard(filter, now, excludeId = null) {
   const settings = await getMeta("settings");
   const day = studyDay(now, settings);
   const reviewSets = await reviewSetIds();
-  const cards = (await getAll("cards")).filter((c) => matches(c, filter, reviewSets) && !c.suspended && c.id !== excludeId);
+  const allCards = await getAll("cards");
+  const buried = buriedToday(allCards, day);
+  const cards = allCards.filter(
+    (c) => matches(c, filter, reviewSets) && !c.suspended && c.id !== excludeId && !buried(c),
+  );
   const uncapped = filter.deckId !== null && reviewSets.has(filter.deckId);
   const byDue = (a, b) => a.due - b.due;
   const learningNow = cards.filter((c) => (c.state === "learning" || c.state === "relearning") && c.due <= now);
