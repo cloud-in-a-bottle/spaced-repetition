@@ -1,6 +1,7 @@
 """The reader tab: library (courses and texts), reading a text with word statuses, word details, marks, Claude
 translations, and the offline dictionaries."""
 
+import sqlite3
 from collections import Counter
 
 import attr
@@ -16,6 +17,7 @@ from litestar.params import JSONBody
 from srs.api.deps import Db
 from srs.api.deps import Dicts
 from srs.api.deps import Translations
+from srs.dictionary.store import Dictionaries
 from srs.dictionary.store import InstallStatus
 from srs.domain.clock import now_ms
 from srs.domain.errors import InvalidRequest
@@ -25,6 +27,7 @@ from srs.reader.text_formats import tokenize
 from srs.reader.words import WordDetails
 from srs.reader.words import mark_words
 from srs.reader.words import word_details
+from srs.reader.words import word_details_many
 from srs.reader.words import word_statuses
 from srs.repo.decks import largest_main_deck
 from srs.translate import TranslationUnavailable
@@ -213,34 +216,38 @@ class Reading:
 @get("/reader/texts/{text_id:str}", sync_to_thread=True)
 def reading_show(db: Db, dicts: Dicts, text_id: FromPath[str]) -> Reading:
     with db.transaction() as conn:
-        t = library.get_text(conn, text_id)
-        course = library.get_course(conn, t.course_id)
-        siblings = library.texts_of(conn, course.id)
-        i = [s.id for s in siblings].index(t.id)
-        dictionary = dicts.get(course.language)
-        tokenized = [tokenize(b.text) for b in t.blocks]
-        words = word_statuses(
-            conn, dictionary, course.language, [tok for b in t.blocks for tok in tokenize(b.text + "\n")], now_ms()
-        )
-        return Reading(
-            id=t.id,
-            title=t.title,
-            course_id=course.id,
-            course_title=course.title,
-            language=course.language,
-            format=t.format,
-            position=t.position,
-            previous_id=siblings[i - 1].id if i > 0 else None,
-            next_id=siblings[i + 1].id if i + 1 < len(siblings) else None,
-            blocks=[
-                ReadingBlock(tokens=[(tok.text, tok.key) for tok in ts], start_ms=b.start_ms, end_ms=b.end_ms)
-                for b, ts in zip(t.blocks, tokenized, strict=True)
-            ],
-            words=words,
-            default_deck_id=largest_main_deck(conn, course.language),
-            dictionary=dictionary is not None,
-            progress_block=t.progress_block,
-        )
+        return _reading(conn, dicts, text_id)
+
+
+def _reading(conn: sqlite3.Connection, dicts: Dictionaries, text_id: str) -> Reading:
+    t = library.get_text(conn, text_id)
+    course = library.get_course(conn, t.course_id)
+    siblings = library.texts_of(conn, course.id)
+    i = [s.id for s in siblings].index(t.id)
+    dictionary = dicts.get(course.language)
+    tokenized = [tokenize(b.text) for b in t.blocks]
+    words = word_statuses(
+        conn, dictionary, course.language, [tok for b in t.blocks for tok in tokenize(b.text + "\n")], now_ms()
+    )
+    return Reading(
+        id=t.id,
+        title=t.title,
+        course_id=course.id,
+        course_title=course.title,
+        language=course.language,
+        format=t.format,
+        position=t.position,
+        previous_id=siblings[i - 1].id if i > 0 else None,
+        next_id=siblings[i + 1].id if i + 1 < len(siblings) else None,
+        blocks=[
+            ReadingBlock(tokens=[(tok.text, tok.key) for tok in ts], start_ms=b.start_ms, end_ms=b.end_ms)
+            for b, ts in zip(t.blocks, tokenized, strict=True)
+        ],
+        words=words,
+        default_deck_id=largest_main_deck(conn, course.language),
+        dictionary=dictionary is not None,
+        progress_block=t.progress_block,
+    )
 
 
 @get("/reader/texts/{text_id:str}/words", sync_to_thread=True)
@@ -251,6 +258,24 @@ def reading_words(db: Db, dicts: Dicts, text_id: FromPath[str]) -> dict[str, str
         language = library.get_course(conn, t.course_id).language
         tokens = [tok for b in t.blocks for tok in tokenize(b.text + "\n")]
         return word_statuses(conn, dicts.get(language), language, tokens, now_ms())
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class OfflineText:
+    reading: Reading
+    # the word panel's details for every word in the text, by lookup key
+    details: dict[str, WordDetails]
+
+
+@get("/reader/texts/{text_id:str}/offline", sync_to_thread=True)
+def reading_offline(db: Db, dicts: Dicts, text_id: FromPath[str]) -> OfflineText:
+    """Everything needed to read a text without a connection, for the reader's "download for offline"."""
+    with db.transaction() as conn:
+        reading = _reading(conn, dicts, text_id)
+        words = {key: text for b in reading.blocks for text, key in b.tokens if key}
+        language = reading.language
+        details = word_details_many(conn, dicts.get(language), language, list(words.values()), now_ms())
+    return OfflineText(reading=reading, details=details)
 
 
 @attr.s(auto_attribs=True, frozen=True)

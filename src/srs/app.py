@@ -2,6 +2,7 @@ import attr
 from litestar import Litestar
 from litestar import Router
 from litestar import get
+from litestar.config.compression import CompressionConfig
 from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.logging import LoggingConfig
@@ -28,6 +29,7 @@ from srs.api.reader import dictionary_install
 from srs.api.reader import library_index
 from srs.api.reader import reading_analyze
 from srs.api.reader import reading_marks
+from srs.api.reader import reading_offline
 from srs.api.reader import reading_show
 from srs.api.reader import reading_statuses
 from srs.api.reader import reading_translate
@@ -110,6 +112,7 @@ def create_app(config: Config) -> Litestar:
             text_progress,
             reading_show,
             reading_statuses,
+            reading_offline,
             reading_word,
             reading_words,
             reading_marks,
@@ -136,6 +139,8 @@ def create_app(config: Config) -> Litestar:
         state=State({"assume_owner": config.assume_owner}),
         on_shutdown=[lambda: db.close()],
         logging_config=LoggingConfig(log_exceptions="always"),
+        # the reader's texts and offline downloads are big JSON; worth compressing for phones
+        compression_config=CompressionConfig(backend="gzip", minimum_size=2000),
     )
 
 

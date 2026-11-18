@@ -151,6 +151,8 @@ body.reading main { max-width: 76rem; }
 .legend-chip { padding: 0 0.4rem; border-radius: 0.3rem; color: var(--fg); }
 .reader-text { font-size: 1.15rem; line-height: 1.8; margin: 1.2rem 0; }
 .reader-progress { margin-top: 0.4rem; }
+.offline-controls { margin-top: 0.3rem; }
+.offline-note { color: var(--hard); margin: 0.4rem 0 0; }
 .reader-progress:empty { display: none; }
 .block.progress-mark { box-shadow: -10px 0 0 -7px var(--accent); }
 .block.flash { animation: flash 1.5s ease-out; }

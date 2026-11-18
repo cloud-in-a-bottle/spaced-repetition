@@ -302,3 +302,10 @@ def test_reading_progress_only_moves_forward(client: TestClient, deck_id: str) -
     assert progress(99) == 1  # clamped to the last block
     assert progress(0, force=True) == 0
     assert client.get("/api/library").json()[0]["texts"][0]["progress_block"] == 0
+
+
+def test_offline_download_has_every_words_details(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    text_id = _episode(client)
+    r = client.get(f"/api/reader/texts/{text_id}/offline").json()
+    assert set(r["details"]) == set(r["reading"]["words"])
+    assert r["details"]["barcos"]["suggestion"]["lemma"] == "barco"

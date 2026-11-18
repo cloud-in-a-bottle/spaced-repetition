@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { getAll } from "../db.js";
 import { h, mount } from "../dom.js";
 import { recordReview, sync } from "../sync.js";
+import { apiOrQueue, downloadText, flushQueue, isNetworkError, offlineText, refreshDownloaded, removeDownload } from "../offline.js";
 
 // Reading a text with the deck's help: words you know well are plain, new words (in no deck) and weak ones
 // (in a deck but poorly recalled or never studied) are highlighted; review sets don't count. Clicking a word opens a panel
@@ -36,11 +37,25 @@ function formatTime(ms) {
 export async function readerView(textId) {
   document.body.classList.add("reading");
   let reading;
+  let bundle = await offlineText(textId); // the downloaded copy, if any: {reading, details}
+  let offline = false;
   try {
     reading = await api("GET", `/reader/texts/${textId}`);
+    flushQueue().catch(() => {});
+    if (bundle) {
+      bundle = { ...bundle, reading };
+      refreshDownloaded(reading).catch(() => {});
+    }
   } catch (err) {
-    mount(h("section", {}, h("p.error", {}, navigator.onLine ? `Couldn't open it: ${err.message}` : "The reader needs a connection.")));
-    return () => document.body.classList.remove("reading");
+    if (isNetworkError(err) && bundle) {
+      reading = bundle.reading;
+      offline = true;
+    } else {
+      mount(h("section", {}, h("p.error", {}, isNetworkError(err)
+        ? "You're offline, and this text isn't downloaded. Use \"Download for offline\" on a text while you're online."
+        : `Couldn't open it: ${err.message}`)));
+      return () => document.body.classList.remove("reading");
+    }
   }
   const decks = (await getAll("decks")).sort((a, b) => a.name.localeCompare(b.name));
   let words = reading.words;
@@ -71,7 +86,7 @@ export async function readerView(textId) {
       const r = await api("POST", "/reader/translate", { language: reading.language, kind: "text", text: blockText(reading.blocks[i]) });
       holder.replaceChildren(r.translation);
     } catch (err) {
-      holder.replaceChildren(h("span.error", {}, err.message));
+      holder.replaceChildren(h("span.error", {}, isNetworkError(err) ? "Translation needs a connection." : err.message));
     }
   }
 
@@ -120,24 +135,83 @@ export async function readerView(textId) {
   }
 
   async function refreshWords() {
-    words = await api("GET", `/reader/texts/${textId}/words`);
+    try {
+      words = await api("GET", `/reader/texts/${textId}/words`);
+    } catch (err) {
+      if (!isNetworkError(err)) throw err;
+    }
     applyStatuses();
+    saveLocalCopy();
+  }
+
+  // Offline, keep the downloaded copy in step with what's on screen (statuses, place), so a reload shows it too.
+  function saveLocalCopy() {
+    if (!bundle) return;
+    bundle = { ...bundle, reading: { ...bundle.reading, words, progress_block: progress } };
+    refreshDownloaded(bundle.reading).catch(() => {});
+  }
+
+  // What the server would do with a mark, done locally while offline (using the downloaded word details).
+  function applyMarkLocally(key, status, roots) {
+    const details = bundle?.details ?? {};
+    const d = details[key];
+    if (status === "ignored") {
+      words[key] = "ignored";
+    } else if (status === "known") {
+      const targets = new Set(roots ?? (d && d.roots[0] !== key ? d.roots : [key]));
+      for (const [k, st] of Object.entries(words)) {
+        if (st === "new" && (targets.has(k) || (details[k]?.roots ?? []).some((r) => targets.has(r)))) words[k] = "known";
+      }
+    } else if (words[key] === "known" || words[key] === "ignored") {
+      words[key] = "new";
+    }
+    if (d) details[key] = { ...d, status: words[key], mark: status, mark_root: null };
   }
 
   async function markAllNewKnown() {
     const keys = Object.keys(words).filter((k) => words[k] === "new");
     if (!keys.length) return;
     if (!confirm(`Mark all ${keys.length} highlighted new words as known? (Words you're learning stay highlighted.)`)) return;
-    await api("PUT", "/reader/marks", { language: reading.language, words: keys, status: "known" });
+    const sent = await apiOrQueue("PUT", "/reader/marks", { language: reading.language, words: keys, status: "known" });
+    if (sent === undefined) for (const k of keys) applyMarkLocally(k, "known", [k]);
     await refreshWords();
   }
 
   async function markRead() {
-    await api("PUT", `/library/texts/${textId}/read`, { read: true });
+    await apiOrQueue("PUT", `/library/texts/${textId}/read`, { read: true });
     readButton.textContent = "✓ Marked as read";
     readButton.disabled = true;
   }
   const readButton = h("button", { onclick: markRead }, "Mark as read");
+
+  // --- downloading for offline ---
+
+  const offlineControls = h("div.offline-controls.small");
+  function renderOfflineControls(state = null) {
+    if (state) {
+      offlineControls.replaceChildren(h("span.muted", {}, state));
+    } else if (bundle) {
+      offlineControls.replaceChildren(h("span.muted", {}, "Available offline · "),
+        h("button.link", { onclick: removeOffline }, "remove download"));
+    } else {
+      offlineControls.replaceChildren(h("button.link", { onclick: download, title: "Save this text and its words' details on this device" }, "Download for offline"));
+    }
+  }
+  async function download() {
+    renderOfflineControls("Downloading…");
+    try {
+      bundle = await downloadText(textId);
+      renderOfflineControls();
+    } catch (err) {
+      renderOfflineControls(`Couldn't download: ${err.message}`);
+    }
+  }
+  async function removeOffline() {
+    await removeDownload(textId);
+    bundle = null;
+    renderOfflineControls();
+  }
+  renderOfflineControls();
 
   // --- the word panel ---
 
@@ -179,7 +253,8 @@ export async function readerView(textId) {
     if (!force && progress !== null && block <= progress) return;
     progress = block;
     renderProgress();
-    api("PUT", `/library/texts/${textId}/progress`, { block, force }).catch(() => {});
+    saveLocalCopy();
+    apiOrQueue("PUT", `/library/texts/${textId}/progress`, { block, force }).catch(() => {});
   }
 
   function select(span) {
@@ -199,7 +274,8 @@ export async function readerView(textId) {
 
   // "known" goes on the word's root(s) (all its forms count, like cards); `roots` picks one when there are several
   async function setMark(status, roots = null) {
-    await api("PUT", "/reader/marks", { language: reading.language, words: [selected.key], status, roots });
+    const sent = await apiOrQueue("PUT", "/reader/marks", { language: reading.language, words: [selected.key], status, roots });
+    if (sent === undefined) applyMarkLocally(selected.key, status, roots);
     await refreshWords();
     showPanel();
   }
@@ -305,11 +381,17 @@ export async function readerView(textId) {
         ? { gender: form.gender, article: form.gender === "feminine" ? "la" : "el" }
         : {};
       try {
-        await api("POST", "/items", {
+        const sent = await apiOrQueue("POST", "/items", {
           deck_id: form.deck, kind: "lexeme", language: reading.language, tags: [],
           lexeme: { lemma: form.lemma.trim(), pos: form.pos, gloss: form.gloss.trim(), features,
             notes: `From ${reading.course_title}: ${reading.title}\n“${selected.sentence.trim()}”` },
         });
+        if (sent === undefined) {
+          words[selected.key] = "learning";
+          await refreshWords();
+          status.textContent = "Saved offline; it'll be added to the deck when you're back online.";
+          return;
+        }
         sync().catch(() => {});
         await refreshWords();
         showPanel();
@@ -338,7 +420,7 @@ export async function readerView(textId) {
       const r = await api("POST", "/reader/translate", { language: reading.language, kind: "word", text: selected.word, context: selected.sentence.trim() });
       holder.replaceChildren(h("strong", {}, r.translation), h("span.muted.small", {}, " in this sentence"));
     } catch (err) {
-      holder.replaceChildren(h("span.error", {}, err.message));
+      holder.replaceChildren(h("span.error", {}, isNetworkError(err) ? "Translation needs a connection." : err.message));
     }
   }
 
@@ -351,8 +433,12 @@ export async function readerView(textId) {
     try {
       d = await api("GET", `/reader/word?language=${encodeURIComponent(reading.language)}&word=${encodeURIComponent(current.word)}`);
     } catch (err) {
-      panel.replaceChildren(h("p.error", {}, err.message));
-      return;
+      const saved = bundle?.details?.[current.key];
+      if (!isNetworkError(err) || !saved) {
+        panel.replaceChildren(h("p.error", {}, isNetworkError(err) ? "Offline, and this word's details weren't downloaded." : err.message));
+        return;
+      }
+      d = { ...saved, word: current.word, status: words[current.key] ?? saved.status };
     }
     if (selected !== current) return;
     const translation = h("div.panel-translation");
@@ -399,6 +485,8 @@ export async function readerView(textId) {
           h("h1", {}, reading.title),
           stats,
           progressLink,
+          offlineControls,
+          offline ? h("p.offline-note.small", {}, "Offline: reading your downloaded copy. Changes are saved and sent when you're back online; translation needs a connection.") : null,
           reading.dictionary ? null : h("p.muted.small", {}, "Tip: install the offline dictionary (Settings → Dictionaries) so inflected words are matched to your deck and get definitions.")),
         h(`div.reader-text${reading.format === "subtitles" ? ".subtitles" : ""}`, { onclick: closePanel }, body),
         h("div.reader-foot", {},

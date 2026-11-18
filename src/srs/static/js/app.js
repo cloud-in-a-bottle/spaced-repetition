@@ -1,5 +1,6 @@
 import { getAll } from "./db.js";
 import { mount, h } from "./dom.js";
+import { flushQueue } from "./offline.js";
 import { onSyncStatus, refreshPendingCount, sync } from "./sync.js";
 import { homeView } from "./views/home.js";
 import { itemEditorView } from "./views/item_editor.js";
@@ -83,6 +84,8 @@ async function main() {
   await refreshPendingCount();
   window.addEventListener("hashchange", route);
   window.addEventListener("online", syncAndRefresh);
+  window.addEventListener("online", () => flushQueue().catch(() => {}));
+  flushQueue().catch(() => {});
   document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && syncAndRefresh());
   setInterval(syncAndRefresh, 5 * 60_000);
   const haveData = (await getAll("decks")).length > 0;

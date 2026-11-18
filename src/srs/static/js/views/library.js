@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { h, mount } from "../dom.js";
+import { downloadedTexts, isNetworkError } from "../offline.js";
 
 // The reader's library: courses (eg a TV show) holding texts (eg one episode's subtitles). Online only.
 
@@ -9,12 +10,26 @@ function offlineNotice(err) {
 
 export async function libraryView() {
   let courses;
+  const downloaded = await downloadedTexts();
   try {
     courses = await api("GET", "/library");
   } catch (err) {
-    mount(h("section", {}, h("h1", {}, "Library"), offlineNotice(err)));
+    if (!isNetworkError(err)) {
+      mount(h("section", {}, h("h1", {}, "Library"), offlineNotice(err)));
+      return;
+    }
+    // offline: just what's been downloaded
+    const byCourse = new Map();
+    for (const t of downloaded) byCourse.set(t.course_title, [...(byCourse.get(t.course_title) ?? []), t]);
+    mount(h("section", {}, h("h1", {}, "Library"),
+      h("p.offline-note.small", {}, "Offline: showing the texts downloaded to this device."),
+      downloaded.length
+        ? [...byCourse].map(([course, texts]) => h("section.course", {}, h("h2", {}, course),
+            h("ul.text-list", {}, texts.map((t) => h("li", {}, h("a", { href: `#/read/${t.id}` }, t.title))))))
+        : h("p.muted", {}, "Nothing downloaded yet. Open a text while online and use \"Download for offline\".")));
     return;
   }
+  const isDownloaded = new Set(downloaded.map((t) => t.id));
 
   async function newCourse() {
     const title = prompt("Course title (eg the name of a show or book)");
@@ -51,6 +66,7 @@ export async function libraryView() {
                 h("span.text-pos", {}, t.position), " ", t.title),
               h("span.muted.text-meta", {},
                 `${t.words.toLocaleString()} words`, t.format === "subtitles" ? " · subtitles" : "",
+                isDownloaded.has(t.id) ? " · offline" : "",
                 t.read_at ? " · ✓ read" : t.progress_block !== null ? ` · ${Math.round((100 * (t.progress_block + 1)) / t.blocks)}% read` : ""))))
         : h("p.muted", {}, "No texts yet."));
 

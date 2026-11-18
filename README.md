@@ -39,6 +39,10 @@ server into the app-data dir: Settings → Dictionaries), Claude Haiku translati
 add it to a deck or review set. The dictionary also maps inflections to lemmas (zarpó → zarpar), so a word counts
 as known when its lemma is. Claude is optional: the key comes from the openhost secrets app (`ANTHROPIC_API_KEY`).
 
+Texts can be downloaded for offline reading (`GET /api/reader/texts/{id}/offline`: the text plus every word's panel
+details, stored in IndexedDB). Offline, the reader uses that copy; marks, reading position and new words are queued
+as API requests (`static/js/offline.js`) and sent when the connection is back. Claude translation needs a connection.
+
 `tools/reading/` has scripts for preparing material by hand (analysis, review sets, library import).
 
 ## offline sync

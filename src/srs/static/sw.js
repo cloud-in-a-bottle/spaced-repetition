@@ -1,6 +1,6 @@
 // Serves the app shell from cache so the app opens offline, refreshing the cache in the background when online.
 // API calls are never cached: offline data lives in IndexedDB (see js/db.js). Bump VERSION to drop old caches.
-const VERSION = "v12";
+const VERSION = "v13";
 const CACHE = `srs-shell-${VERSION}`;
 const SHELL = [
   "/",
@@ -14,6 +14,7 @@ const SHELL = [
   "/static/js/queue.js",
   "/static/js/render.js",
   "/static/js/sync.js",
+  "/static/js/offline.js",
   "/static/js/views/home.js",
   "/static/js/views/study.js",
   "/static/js/views/items.js",

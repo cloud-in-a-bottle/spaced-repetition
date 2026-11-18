@@ -292,16 +292,28 @@ def _suggest(word: str, entries: list[DictEntry], lemma_entries: list[DictEntry]
 def word_details(
     conn: sqlite3.Connection, dictionary: Dictionary | None, language: str, word: str, now: int
 ) -> WordDetails:
-    key = lookup_key(word)
-    ctx = gather(conn, dictionary, language, [key], now)
-    deck_ids = {
-        r["id"]: r["deck_id"]
-        for r in conn.execute(
-            "SELECT id, deck_id FROM items WHERE id IN "
-            f"({','.join('?' * len({lx.item_id for c in ctx.candidates[key] for lx in ctx.deck.get(c, [])}))})",
-            sorted({lx.item_id for c in ctx.candidates[key] for lx in ctx.deck.get(c, [])}),
-        )
-    }
+    return word_details_many(conn, dictionary, language, [word], now)[lookup_key(word)]
+
+
+def word_details_many(
+    conn: sqlite3.Connection, dictionary: Dictionary | None, language: str, words: list[str], now: int
+) -> dict[str, WordDetails]:
+    """Details for many words at once (eg every word of a text, for reading offline), keyed by lookup key, with
+    the deck and mark lookups batched."""
+    by_key = {lookup_key(w): w for w in words}
+    ctx = gather(conn, dictionary, language, sorted(by_key), now)
+    lexeme_ids = sorted({lx.item_id for lxs in ctx.deck.values() for lx in lxs})
+    deck_ids: dict[str, str] = {}
+    for i in range(0, len(lexeme_ids), 500):
+        chunk = lexeme_ids[i : i + 500]
+        rows = conn.execute(f"SELECT id, deck_id FROM items WHERE id IN ({','.join('?' * len(chunk))})", chunk)
+        deck_ids.update({r["id"]: r["deck_id"] for r in rows})
+    return {key: _details(ctx, dictionary, deck_ids, key, word) for key, word in by_key.items()}
+
+
+def _details(
+    ctx: WordContext, dictionary: Dictionary | None, deck_ids: dict[str, str], key: str, word: str
+) -> WordDetails:
     deck, seen = [], set()
     for c in sorted(ctx.candidates[key], key=lambda c: c != key):  # the word itself first
         for lx in ctx.deck.get(c, []):
