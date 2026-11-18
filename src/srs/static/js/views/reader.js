@@ -191,12 +191,36 @@ export async function readerView(textId) {
   }
 
   // Recognizing a word while reading is a successful review of it: record a Good, like the Study tab would.
+  // Some words have no cards of their own (eg verbs imported only for their conjugations): give one a word ->
+  // meaning card, keeping whatever cards it has.
+  async function addRecognitionCard(itemId) {
+    const item = await api("GET", `/items/${itemId}`);
+    const templates = new Set(item.cards.filter((c) => !c.deleted).map((c) => c.template_id));
+    templates.add(`${item.kind}-recognize`);
+    await api("PUT", `/items/${itemId}`, {
+      deck_id: item.deck_id, kind: item.kind, language: item.language, tags: item.tags,
+      [item.kind]: item[item.kind], template_ids: [...templates],
+    });
+    await sync();
+  }
+
   async function markReviewed(m, button) {
     button.disabled = true;
     button.textContent = "Recording…";
     try {
-      const card = await readingCard(m.item_id);
-      if (!card) throw new Error("this word has no cards");
+      let card = await readingCard(m.item_id);
+      if (!card) {
+        const ok = confirm(`${m.lemma} has no cards of its own yet (only its conjugations, if any). ` +
+          "Add a word → meaning card for it and record this review?");
+        if (!ok) {
+          button.disabled = false;
+          button.textContent = "Mark as reviewed";
+          return;
+        }
+        await addRecognitionCard(m.item_id);
+        card = await readingCard(m.item_id);
+        if (!card) throw new Error("the card didn't arrive; try again");
+      }
       await recordReview(card, 3, 0);
       await sync();
       await refreshWords();
