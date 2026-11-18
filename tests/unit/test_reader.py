@@ -18,6 +18,23 @@ WIKTIONARY = [
         "word": "zarpar",
         "pos": "verb",
         "senses": [{"raw_glosses": ["(nautical) to set sail"], "glosses": ["to set sail"]}],
+        "forms": [{"form": "no-table-tags", "source": "conjugation", "tags": ["table-tags"]}],
+    },
+    {
+        "word": "tener",
+        "pos": "verb",
+        "senses": [{"glosses": ["to have"]}],
+        "forms": [
+            {"form": "irregular", "source": "conjugation", "tags": ["table-tags"]},
+            {"form": "e-ie alternation", "source": "conjugation", "tags": ["class"]},
+        ],
+    },
+    {
+        "word": "tuve",
+        "pos": "verb",
+        "senses": [
+            {"glosses": ["first-person singular preterite indicative of tener"], "form_of": [{"word": "tener"}]}
+        ],
     },
     {
         "word": "zarpó",
@@ -138,7 +155,7 @@ def test_review_set_words_stay_new(client: TestClient, deck_id: str) -> None:  #
 def test_word_details_suggest_the_lemma(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
     d = client.get("/api/reader/word", params={"language": "es", "word": "barcos"}).json()
     assert d["status"] == "new" and d["deck"] == []
-    assert d["dictionary"][0]["form_of"] == [{"lemma": "barco", "description": "plural of barco"}]
+    assert d["dictionary"][0]["form_of"] == [{"lemma": "barco", "description": "plural of barco", "english": None}]
     assert [e["word"] for e in d["lemma_entries"]] == ["barco"]
     assert d["suggestion"] == {"lemma": "barco", "pos": "noun", "gloss": "boat, ship", "gender": "masculine"}
 
@@ -202,3 +219,14 @@ def test_without_a_dictionary_only_mid_sentence_capitals_are_names(tmp_path: Pat
     with TestClient(app=app) as client:
         r = client.post("/api/reader/statuses", json={"language": "es", "words": ["Los barcos de Lisboa. Hola."]})
         assert r.json() == {"barcos": "new", "de": "new", "hola": "new", "lisboa": "name", "los": "new"}
+
+
+def test_verb_forms_get_english_and_a_verb_class(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    d = client.get("/api/reader/word", params={"language": "es", "word": "zarpó"}).json()
+    [form] = d["dictionary"][0]["form_of"]
+    assert form["english"] == "he/she/it set sail"
+    assert d["lemma_entries"][0]["verb_class"] == {"label": "regular", "notes": []}
+
+    d = client.get("/api/reader/word", params={"language": "es", "word": "tuve"}).json()
+    assert d["dictionary"][0]["form_of"][0]["english"] == "I had"
+    assert d["lemma_entries"][0]["verb_class"] == {"label": "irregular", "notes": ["e→ie"]}

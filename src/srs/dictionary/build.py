@@ -30,7 +30,9 @@ CREATE TABLE entries (
     pos TEXT NOT NULL,
     gender TEXT,
     senses TEXT NOT NULL,
-    form_of TEXT NOT NULL
+    form_of TEXT NOT NULL,
+    -- verbs with a conjugation table: {"irregular": bool, "alternations": ["e-ie", ...]}
+    conjugation TEXT
 );
 CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 """
@@ -58,7 +60,18 @@ def _lemma(form_of_word: str) -> str:
     return form_of_word.split(" combined with ")[0].strip()
 
 
-def entry_row(d: dict) -> tuple[str, str, str, str | None, str, str] | None:  # type: ignore[type-arg]
+def _conjugation(d: dict) -> str | None:  # type: ignore[type-arg]
+    table = [f for f in d.get("forms", []) if f.get("source") == "conjugation"]
+    if not table:
+        return None
+    irregular = any(f.get("form") == "irregular" and "table-tags" in f.get("tags", []) for f in table)
+    alternations = sorted(
+        {f["form"].removesuffix(" alternation") for f in table if "class" in f.get("tags", []) and f.get("form")}
+    )
+    return json.dumps({"irregular": irregular, "alternations": alternations}, ensure_ascii=False)
+
+
+def entry_row(d: dict) -> tuple[str, str, str, str | None, str, str, str | None] | None:  # type: ignore[type-arg]
     word = d.get("word", "")
     if not word or " " in word:  # the reader looks up single words only
         return None
@@ -81,6 +94,7 @@ def entry_row(d: dict) -> tuple[str, str, str, str | None, str, str] | None:  # 
         _gender(d.get("senses", [])),
         json.dumps(senses, ensure_ascii=False),
         json.dumps(form_of[:12], ensure_ascii=False),
+        _conjugation(d) if d.get("pos") == "verb" else None,
     )
 
 
@@ -112,11 +126,11 @@ def build_dictionary(
         batch.append(row)
         count += 1
         if len(batch) >= 5000:
-            db.executemany("INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?)", batch)
+            db.executemany("INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?)", batch)
             batch = []
             if progress:
                 progress(count)
-    db.executemany("INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?)", batch)
+    db.executemany("INSERT INTO entries VALUES (?, ?, ?, ?, ?, ?, ?)", batch)
     db.execute("CREATE INDEX entries_key ON entries (key)")
     db.executemany(
         "INSERT INTO meta VALUES (?, ?)",

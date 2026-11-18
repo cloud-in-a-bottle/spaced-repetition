@@ -15,6 +15,7 @@ from srs.domain.normalize import lookup_key
 from srs.domain.schedule import CardState
 from srs.knowledge.models import LexemeKnowledge
 from srs.knowledge.query import lookup_words
+from srs.reader.conjugation import english_form
 from srs.reader.text_formats import Token
 
 # A deck word counts as known for reading if FSRS puts the chance of recalling it at least this high.
@@ -209,6 +210,21 @@ class WordDetails:
     suggestion: Suggestion | None
 
 
+def _with_english(entry: DictEntry, lemma_entries: list[DictEntry]) -> DictEntry:
+    """Fill in English renderings of verb forms ("I renounced"), from the lemma's English sense."""
+    if entry.pos != "verb" or not entry.form_of:
+        return entry
+    senses_of: dict[str, list[str]] = {}
+    for le in lemma_entries:
+        if le.pos == "verb":
+            senses_of.setdefault(lookup_key(le.word), le.senses)
+    forms = [
+        attr.evolve(f, english=english_form(f.description, senses_of.get(lookup_key(f.lemma), [])))
+        for f in entry.form_of
+    ]
+    return attr.evolve(entry, form_of=forms)
+
+
 def _first_gloss(senses: list[str]) -> str:
     gloss = re.sub(r"^\([^)]*\)\s*", "", senses[0]) if senses else ""
     return gloss[:120]
@@ -276,6 +292,7 @@ def word_details(
     entries = dictionary.entries(word) if dictionary else []
     lemma_words = sorted({f.lemma for e in entries for f in e.form_of})
     lemma_entries = [le for lw in lemma_words for le in (dictionary.entries(lw) if dictionary else []) if le.senses]
+    entries = [_with_english(e, lemma_entries) for e in entries]
     return WordDetails(
         word=word,
         key=key,

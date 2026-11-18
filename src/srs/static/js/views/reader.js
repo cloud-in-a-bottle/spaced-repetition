@@ -167,14 +167,17 @@ export async function readerView(textId) {
   }
 
   function dictionarySection(d) {
-    const forms = d.dictionary.flatMap((e) => e.form_of.map((f) => f.description));
+    // each distinct form description once, with its English rendering ("I renounced") when there is one
+    const forms = [...new Map(d.dictionary.flatMap((e) => e.form_of).map((f) => [f.description, f])).values()];
     const headwords = [...d.dictionary.filter((e) => e.senses.length), ...d.lemma_entries];
     if (!forms.length && !headwords.length) return h("p.muted", {}, reading.dictionary ? "Not in the dictionary." : "No offline dictionary installed (Settings → Dictionaries).");
     return h("div.dict", {},
-      [...new Set(forms)].map((f) => h("p.dict-form", {}, f)),
+      forms.map((f) => h("p.dict-form", {}, f.english ? [h("span.dict-english", {}, f.english), " · "] : null, f.description)),
       headwords.map((e) =>
         h("div.dict-entry", {},
-          h("div", {}, h("strong", {}, e.word), " ", h("span.muted", {}, e.pos.replace("_", " "), e.gender ? `, ${e.gender}` : "")),
+          h("div", {}, h("strong", {}, e.word), " ", h("span.muted", {}, e.pos.replace("_", " "), e.gender ? `, ${e.gender}` : ""),
+            e.verb_class ? [" ", h(`span.verb-class.vc-${e.verb_class.label}`, { title: e.verb_class.notes.join(", ") || "follows the regular pattern" },
+              e.verb_class.label + (e.verb_class.notes.length ? ` (${e.verb_class.notes.join(", ")})` : ""))] : null),
           h("ol.dict-senses", {}, e.senses.slice(0, 5).map((s) => h("li", {}, s))))));
   }
 

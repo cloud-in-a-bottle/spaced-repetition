@@ -183,6 +183,11 @@ body.reading main { max-width: 76rem; }
 .deck-match { padding: 0.4rem 0; border-bottom: 1px solid var(--line); }
 .mark-reviewed { margin-top: 0.35rem; padding: 0.25rem 0.6rem; }
 .dict-form { margin: 0; font-size: 0.9rem; color: var(--muted); }
+.dict-english { color: var(--fg); font-weight: 600; }
+.verb-class { font-size: 0.75rem; padding: 0 0.4rem; border-radius: 0.3rem; border: 1px solid var(--line); white-space: nowrap; }
+.vc-regular { color: var(--good); }
+.vc-stem-changing { color: var(--hard); }
+.vc-irregular { color: var(--again); }
 .dict-entry { margin-top: 0.3rem; }
 .dict-senses { margin: 0.2rem 0 0; padding-left: 1.3rem; font-size: 0.92rem; }
 .panel-actions { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; }

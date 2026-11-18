@@ -11,6 +11,8 @@ from loguru import logger
 from srs.dictionary.build import KAIKKI_LANGUAGES
 from srs.dictionary.build import build_dictionary
 from srs.domain.normalize import lookup_key
+from srs.reader.conjugation import VerbClass
+from srs.reader.conjugation import verb_class
 
 # wiktextract part-of-speech names -> ours (srs.domain.kinds.PartOfSpeech)
 POS = {
@@ -35,6 +37,8 @@ class FormOf:
     lemma: str
     # eg "third-person singular preterite indicative of zarpar"
     description: str
+    # eg "he/she/it set sail"; filled in by the reader (srs.reader.conjugation) when it can be worked out
+    english: str | None = None
 
 
 @attr.s(auto_attribs=True, frozen=True)
@@ -45,17 +49,30 @@ class DictEntry:
     gender: str | None
     senses: list[str]
     form_of: list[FormOf]
+    # verbs: regular / stem-changing / irregular, from Wiktionary's conjugation table
+    verb_class: VerbClass | None = None
+
+
+def _verb_class(conjugation: str | None) -> VerbClass | None:
+    if conjugation is None:
+        return None
+    c = json.loads(conjugation)
+    return verb_class(c["irregular"], c["alternations"])
 
 
 class Dictionary:
     def __init__(self, path: Path) -> None:
         self._conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
         self._lock = threading.Lock()
+        columns = {r[1] for r in self._conn.execute("PRAGMA table_info(entries)")}
+        # dictionaries built before verb classes were added lack the column; rebuild to get them
+        self._conjugation_column = "conjugation" if "conjugation" in columns else "NULL"
 
     def entries(self, word: str) -> list[DictEntry]:
         with self._lock:
             rows = self._conn.execute(
-                "SELECT word, pos, gender, senses, form_of FROM entries WHERE key = ?", (lookup_key(word),)
+                f"SELECT word, pos, gender, senses, form_of, {self._conjugation_column} FROM entries WHERE key = ?",
+                (lookup_key(word),),
             ).fetchall()
         return [
             DictEntry(
@@ -64,8 +81,9 @@ class Dictionary:
                 gender=gender,
                 senses=json.loads(senses),
                 form_of=[FormOf(lemma=f["lemma"], description=f["desc"]) for f in json.loads(form_of)],
+                verb_class=_verb_class(conjugation),
             )
-            for w, pos, gender, senses, form_of in rows
+            for w, pos, gender, senses, form_of, conjugation in rows
         ]
 
     def lemmas(self, word: str) -> set[str]:
