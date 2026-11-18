@@ -1,5 +1,6 @@
 [project]
 name = "srs"
+license = "MIT"
 version = "0.1.0"
 description = "FSRS spaced repetition with a typed model of what each card is about"
 requires-python = "==3.12.*"

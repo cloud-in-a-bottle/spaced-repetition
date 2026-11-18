@@ -62,9 +62,9 @@ script you write for your deck). Write the result as JSON and `POST /api/import`
 ```
 
 `tools/anki_import/` is the converter used for the original anki collection
-(`uv run python -m tools.anki_import.main <backup.colpkg> <out_dir>`). It writes `bundle.json`, `settings.json`, a
+(`uv run python -m tools.anki_import.main <backup.colpkg> <overrides.toml> <out_dir>`). It writes `bundle.json`, `settings.json`, a
 `REPORT.md` of every decision and an `items.csv` to review; hand-made decisions (part of speech, spelling fixes, ...)
-live in `tools/anki_import/overrides.toml`.
+live in the overrides file, which is kept out of the repo because it's derived from personal data.
 
 Every entity carries its own id, so re-importing updates in place. Include your anki review history (revlog `id`
 is the timestamp in ms; `ease` 1-4 is the rating) and FSRS replays it, so cards keep their memory state.

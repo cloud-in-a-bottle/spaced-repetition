@@ -5,11 +5,11 @@ info:
   description: |
     Lets other Cloud in a Bottle apps ask what the owner knows, from their spaced repetition reviews.
 
-    Service URL: `github.com/zplizzi/srs/services/srs`. Consume it with:
+    Service URL: `github.com/cloud-in-a-bottle/spaced-repetition/services/srs`. Consume it with:
 
     ```toml
     [[services.v2.consumes]]
-    service = "github.com/zplizzi/srs/services/srs"
+    service = "github.com/cloud-in-a-bottle/spaced-repetition/services/srs"
     shortname = "srs"
     version = ">=0.1.0"
     grants = ["knowledge:read"]

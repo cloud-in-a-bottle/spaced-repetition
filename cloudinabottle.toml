@@ -19,6 +19,6 @@ sqlite = ["main"]
 
 # Other apps ask what you know through this service; see services/srs/openapi.yaml.
 [[services.v2.provides]]
-service = "github.com/zplizzi/srs/services/srs"
+service = "github.com/cloud-in-a-bottle/spaced-repetition/services/srs"
 version = "0.1.0"
 endpoint = "/service/"

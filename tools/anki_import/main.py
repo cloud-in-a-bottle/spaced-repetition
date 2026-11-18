@@ -1,6 +1,9 @@
 """Convert an anki backup into an srs import bundle, plus a record of every decision for review.
 
-    uv run python -m tools.anki_import.main <backup.colpkg> <out_dir>
+    uv run python -m tools.anki_import.main <backup.colpkg> <overrides.toml> <out_dir>
+
+The overrides file holds the hand-made decisions for one collection (see overrides.py for its shape). It is derived
+from personal data, so it lives next to the backup rather than in this repo.
 
 Writes <out_dir>/bundle.json (POST to /api/import), settings.json (PUT to /api/settings), REPORT.md and items.csv.
 """
@@ -29,8 +32,8 @@ from tools.anki_import.spanish_vocab import is_spanish_vocab
 SKIP_DECK_PREFIXES = ("Korean", "Chinese Pinyin")
 
 
-def convert(colpkg: Path, out_dir: Path) -> None:
-    ov = load_overrides()
+def convert(colpkg: Path, overrides: Path, out_dir: Path) -> None:
+    ov = load_overrides(overrides)
     col = read_colpkg(colpkg)
     b = Builder()
     kofi_notes = []
@@ -93,4 +96,4 @@ def convert(colpkg: Path, out_dir: Path) -> None:
 
 
 if __name__ == "__main__":
-    convert(Path(sys.argv[1]), Path(sys.argv[2]))
+    convert(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]))

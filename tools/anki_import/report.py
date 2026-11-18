@@ -16,7 +16,7 @@ _RULES = """\
     English-first. The anki card that showed Spanish first becomes the **recognize** card, the other **produce**,
     so review history lands on the right skill.
   - Part of speech comes from the deck (Nouns / Verbs / Prepositions) or, for Adjectives-and-Adverbs and Other,
-    from `overrides.toml` (`[spanish.terms]`), which I filled in word by word.
+    from the overrides file (`[spanish.terms]`), which I filled in word by word.
   - Nouns: the article is split off into `features.article` / `features.gender` (and `number=plural` for los/las);
     the lemma is the bare noun. The default templates show the article with the lemma.
   - Spelling: missing accents and typos fixed per `[spanish.spelling]` / `[spanish.term_fixes]` (listed below).

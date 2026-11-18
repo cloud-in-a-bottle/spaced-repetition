@@ -3,8 +3,6 @@ from pathlib import Path
 
 import attr
 
-OVERRIDES_PATH = Path(__file__).parent / "overrides.toml"
-
 
 @attr.s(auto_attribs=True, frozen=True)
 class TermOverride:
@@ -29,7 +27,10 @@ class Overrides:
     mandarin_mine: dict[str, dict[str, str]]
 
 
-def load_overrides(path: Path = OVERRIDES_PATH) -> Overrides:
+def load_overrides(path: Path) -> Overrides:
+    """Tables: [settings] (an srs settings body), [spanish.spelling], [spanish.term_fixes], spanish.feminine_with_el,
+    [spanish.terms."<term>"] (pos, lemma, alternatives, tags, note, gender), [spanish.conjugation_only_verbs]
+    (infinitive = gloss), [spanish.conjugated_notes], [mandarin.pos] (HSK pos -> srs pos) and [mandarin.mine]."""
     raw = tomllib.loads(path.read_text())
     es = raw["spanish"]
     return Overrides(
