@@ -38,3 +38,4 @@ playwright-report/
 # personal content dropped in for import (subtitles etc.); not part of the app
 *.srt
 *.zip
+lingqs*.csv

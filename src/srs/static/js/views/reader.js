@@ -475,9 +475,9 @@ export async function readerView(textId) {
                d.mark_root ? `You marked ${d.mark_root} as known.` : "You marked this as known."),
              h("button", { onclick: () => setMark(null), title: "Remove the mark so the word is highlighted again" }, "Unmark")]
           : [
-                d.roots.length > 1
+                ...(d.roots.length > 1
                   ? d.roots.map((r) => h("button", { onclick: () => setMark("known", [r]), title: `Mark ${r} and all its forms known` }, `I know ${r}`))
-                  : h("button", { onclick: () => setMark("known"), title: d.roots[0] && d.roots[0] !== d.key ? `Marks ${d.roots[0]} and all its forms known` : "" }, "I know this"),
+                  : [h("button", { onclick: () => setMark("known"), title: d.roots[0] && d.roots[0] !== d.key ? `Marks ${d.roots[0]} and all its forms known` : "" }, "I know this")]),
                 h("button", { onclick: () => setMark("ignored"), title: "Don't highlight this spelling (names, foreign words)" }, "Ignore"),
             ]),
     ].filter(Boolean));

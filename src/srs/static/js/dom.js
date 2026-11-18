@@ -10,7 +10,7 @@ export function h(tag, attrs = {}, ...children) {
     else if (k === "checked") el.checked = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
-  for (const child of children.flat()) {
+  for (const child of children.flat(Infinity)) {
     if (child === null || child === undefined || child === false) continue;
     el.append(child instanceof Node ? child : String(child));
   }
