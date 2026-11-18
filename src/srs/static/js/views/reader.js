@@ -263,12 +263,22 @@ export async function readerView(textId) {
     const key = span.dataset.key;
     selected = { key, word: span.textContent, sentence: sentenceAround(span) };
     for (const s of spansByKey.get(key)) s.classList.add("selected");
-    showPanel();
+    showPanel().then(() => keepVisible(span));
+  }
+
+  // On a phone the panel is a sheet over the bottom of the screen: make sure the tapped word isn't under it.
+  function keepVisible(span) {
+    if (getComputedStyle(panel).position !== "fixed" || panel.hidden) return;
+    const r = span.getBoundingClientRect();
+    if (r.bottom > panel.getBoundingClientRect().top - 8 || r.top < 60) {
+      window.scrollBy({ top: r.top - (panel.getBoundingClientRect().top - 60) / 2, behavior: "smooth" });
+    }
   }
 
   function closePanel() {
     selected = null;
     panel.hidden = true;
+    document.body.classList.remove("panel-open");
     for (const s of document.querySelectorAll(".w.selected")) s.classList.remove("selected");
   }
 
@@ -428,6 +438,7 @@ export async function readerView(textId) {
     if (!selected) return;
     const current = selected;
     panel.hidden = false;
+    document.body.classList.add("panel-open");
     panel.replaceChildren(h("p.muted", {}, "Looking up…"));
     let d;
     try {
@@ -457,18 +468,18 @@ export async function readerView(textId) {
       translation,
       inDeck ? null : h("h3.panel-title", {}, "Add to a deck"),
       inDeck ? null : addForm(d),
-      h("div.panel-marks", {},
+      // A word in a deck goes by its cards (marks don't apply), so only words in no deck get mark controls.
+      inDeck ? null : h("div.panel-marks", {},
         d.mark === "known" || d.mark === "ignored"
-          ? [h("span.muted.small", {}, d.mark_root ? `Known (as ${d.mark_root}). ` : `Marked ${d.mark}. `),
-             h("button.link", { onclick: () => setMark(null) }, "undo")]
-          : inDeck
-            ? null
-            : [
+          ? [h("span.small", {}, d.mark === "ignored" ? "You're ignoring this word." :
+               d.mark_root ? `You marked ${d.mark_root} as known.` : "You marked this as known."),
+             h("button", { onclick: () => setMark(null), title: "Remove the mark so the word is highlighted again" }, "Unmark")]
+          : [
                 d.roots.length > 1
                   ? d.roots.map((r) => h("button", { onclick: () => setMark("known", [r]), title: `Mark ${r} and all its forms known` }, `I know ${r}`))
                   : h("button", { onclick: () => setMark("known"), title: d.roots[0] && d.roots[0] !== d.key ? `Marks ${d.roots[0]} and all its forms known` : "" }, "I know this"),
                 h("button", { onclick: () => setMark("ignored"), title: "Don't highlight this spelling (names, foreign words)" }, "Ignore"),
-              ]),
+            ]),
     ].filter(Boolean));
   }
 
@@ -503,6 +514,6 @@ export async function readerView(textId) {
 
   return () => {
     document.removeEventListener("keydown", onKey);
-    document.body.classList.remove("reading");
+    document.body.classList.remove("reading", "panel-open");
   };
 }

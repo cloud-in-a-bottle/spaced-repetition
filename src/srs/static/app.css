@@ -218,4 +218,6 @@ body.reading main { max-width: 76rem; }
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   }
   .reader-text { font-size: 1.1rem; }
+  /* room to scroll the last lines above the word sheet */
+  body.panel-open .reader-foot { padding-bottom: 62dvh; }
 }
