@@ -38,8 +38,8 @@ export async function recordReview(card, rating, durationMs) {
   return updated;
 }
 
-// Bump when synced cards gain a field, so clients pull everything again once (eg 2: cards carry `pos`).
-const DATA_VERSION = 2;
+// Bump when synced cards gain a field, so clients pull everything again once (2: cards carry `pos`; 3: review sets).
+const DATA_VERSION = 3;
 
 async function syncOnce() {
   if ((await getMeta("data-version")) !== DATA_VERSION) {

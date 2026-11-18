@@ -56,7 +56,7 @@ def _lexeme_knowledge(conn: sqlite3.Connection, lexemes: list[Item], now: int) -
     """Knowledge for many lexemes at once, with a fixed number of queries regardless of how many there are."""
     settings = load_settings(conn)
     skill_by_template = {t.id: t.skill for t in list_templates(conn)}
-    forms = forms_of_lexemes(conn, [lx.id for lx in lexemes])
+    forms = forms_of_lexemes(conn, [lx.id for lx in lexemes], main_only=True)
     cards_by_item: dict[str, list[Card]] = defaultdict(list)
     for card in cards_for_items(conn, [lx.id for lx in lexemes] + [f.id for f in forms]):
         if not card.deleted and card.template_id in skill_by_template:

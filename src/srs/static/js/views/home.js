@@ -36,7 +36,9 @@ export async function homeView() {
   const expanded = loadExpanded();
 
   async function render() {
-    const decks = (await getAll("decks")).sort((a, b) => a.name.localeCompare(b.name));
+    const allDecks = (await getAll("decks")).sort((a, b) => a.name.localeCompare(b.name));
+    const decks = allDecks.filter((d) => !d.ephemeral);
+    const reviewSets = allDecks.filter((d) => d.ephemeral);
     const counts = await dueCounts(Date.now());
     const posByDeck = await partsOfSpeech();
     // Decks with more than one part of speech list each, so you can study just the nouns, say.
@@ -89,6 +91,17 @@ export async function homeView() {
           ),
           decks.flatMap(deckRows),
         ),
+        reviewSets.length
+          ? [
+              h("h2.section-title", {}, "Review sets"),
+              h(
+                "ul.deck-list",
+                {},
+                reviewSets.flatMap(deckRows),
+              ),
+              h("p.muted.legend", {}, "Not part of your knowledge base. Add the words you want to keep to a main deck while you study."),
+            ]
+          : null,
         h("p.muted.legend", {}, h("span.count-new", {}, "new"), " · ", h("span.count-learning", {}, "learning"), " · ",
           h("span.count-review", {}, "due")),
       ),

@@ -3,7 +3,7 @@ import sqlite3
 import attr
 
 from srs.core.decks import create_deck
-from srs.core.decks import rename_deck
+from srs.core.decks import update_deck_settings
 from srs.core.items import save_item
 from srs.core.sync import record_reviews
 from srs.domain.errors import InvalidRequest
@@ -22,6 +22,8 @@ from srs.repo.decks import get_deck
 class ImportDeck:
     id: str
     name: str
+    ephemeral: bool = False
+    promote_to: str | None = None
 
 
 @attr.s(auto_attribs=True, frozen=True)
@@ -74,10 +76,12 @@ def _upsert_deck(conn: sqlite3.Connection, deck: ImportDeck, seq: int, now: int)
         same_name = find_deck_by_name(conn, deck.name)
         if same_name is not None:
             raise InvalidRequest(f"deck {deck.name!r} already exists with id {same_name.id}") from None
-        create_deck(conn, deck.name, seq, now, deck_id=deck.id)
+        create_deck(conn, deck.name, seq, now, deck_id=deck.id, ephemeral=deck.ephemeral, promote_to=deck.promote_to)
         return
-    if existing.name != deck.name:
-        rename_deck(conn, deck.id, deck.name, seq)
+    if existing.ephemeral != deck.ephemeral:
+        raise InvalidRequest(f"deck {deck.name!r} exists and {'is' if existing.ephemeral else 'is not'} a review set")
+    if (existing.name, existing.promote_to) != (deck.name, deck.promote_to):
+        update_deck_settings(conn, deck.id, deck.name, deck.promote_to, seq)
 
 
 def import_bundle(conn: sqlite3.Connection, bundle: ImportBundle, seq: int, now: int) -> ImportResult:

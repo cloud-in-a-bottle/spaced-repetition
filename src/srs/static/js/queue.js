@@ -23,9 +23,20 @@ export async function noteNewCardIntroduced(now, settings) {
   await setMeta("new-introduced", { [key]: (counter[key] ?? 0) + 1 });
 }
 
-// What to study: a deck (null = all decks), optionally narrowed to one part of speech.
-function matches(card, { deckId = null, pos = null }) {
-  return (deckId === null || card.deck_id === deckId) && (pos === null || card.pos === pos);
+// Review sets are for cramming: their new cards ignore the daily limit (and don't use it up), and they stay out of
+// "All decks" so they don't flood it.
+async function reviewSetIds() {
+  return new Set((await getAll("decks")).filter((d) => d.ephemeral).map((d) => d.id));
+}
+
+// What to study: a deck (null = all main decks), optionally narrowed to one part of speech.
+function matches(card, { deckId = null, pos = null }, reviewSets) {
+  const inDeck = deckId === null ? !reviewSets.has(card.deck_id) : card.deck_id === deckId;
+  return inDeck && (pos === null || card.pos === pos);
+}
+
+export async function isReviewSet(deckId) {
+  return (await reviewSetIds()).has(deckId);
 }
 
 // Key for a deck's part-of-speech subset in dueCounts.
@@ -33,16 +44,18 @@ export function posKey(deckId, pos) {
   return `${deckId}|${pos}`;
 }
 
-// Due counts: { [deckId]: {learning, review, new} }, per part of speech under posKey(deckId, pos), and the totals
-// under null.
+// Due counts: { [deckId]: {learning, review, new} }, per part of speech under posKey(deckId, pos), and the main-deck
+// totals under null.
 export async function dueCounts(now) {
   const settings = await getMeta("settings");
   if (!settings) return {};
   const day = studyDay(now, settings);
   const newLeft = Math.max(0, settings.new_cards_per_day - (await newCardsIntroduced(day.key)));
+  const reviewSets = await reviewSetIds();
   const counts = {};
   const bump = (card, kind) => {
-    const keys = [card.deck_id, null];
+    const keys = [card.deck_id];
+    if (!reviewSets.has(card.deck_id)) keys.push(null);
     if (card.pos) keys.push(posKey(card.deck_id, card.pos));
     for (const key of keys) {
       counts[key] ??= { learning: 0, review: 0, new: 0 };
@@ -53,7 +66,9 @@ export async function dueCounts(now) {
     const kind = classify(card, now, day);
     if (kind) bump(card, kind);
   }
-  for (const c of Object.values(counts)) c.new = Math.min(c.new, newLeft);
+  for (const [key, c] of Object.entries(counts)) {
+    if (!reviewSets.has(key.split("|")[0])) c.new = Math.min(c.new, newLeft);
+  }
   return counts;
 }
 
@@ -70,13 +85,15 @@ function classify(card, now, day) {
 export async function nextCard(filter, now, excludeId = null) {
   const settings = await getMeta("settings");
   const day = studyDay(now, settings);
-  const cards = (await getAll("cards")).filter((c) => matches(c, filter) && !c.suspended && c.id !== excludeId);
+  const reviewSets = await reviewSetIds();
+  const cards = (await getAll("cards")).filter((c) => matches(c, filter, reviewSets) && !c.suspended && c.id !== excludeId);
+  const uncapped = filter.deckId !== null && reviewSets.has(filter.deckId);
   const byDue = (a, b) => a.due - b.due;
   const learningNow = cards.filter((c) => (c.state === "learning" || c.state === "relearning") && c.due <= now);
   if (learningNow.length) return learningNow.sort(byDue)[0];
   const reviews = cards.filter((c) => c.state === "review" && c.due < day.end);
   if (reviews.length) return reviews.sort(byDue)[0];
-  if ((await newCardsIntroduced(day.key)) < settings.new_cards_per_day) {
+  if (uncapped || (await newCardsIntroduced(day.key)) < settings.new_cards_per_day) {
     const fresh = cards.filter((c) => c.state === "new").sort((a, b) => a.created_at - b.created_at || (a.id < b.id ? -1 : 1));
     if (fresh.length) return fresh[0];
   }

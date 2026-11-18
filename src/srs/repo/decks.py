@@ -12,11 +12,21 @@ class Deck:
     created_at: int
     deleted: bool
     seq: int
+    # a review set: studied, but its items aren't part of what the knowledge service reports
+    ephemeral: bool = False
+    # where a review set's "add to main deck" copies items; None picks the main deck with most items in the language
+    promote_to: str | None = None
 
 
 def _from_row(row: sqlite3.Row) -> Deck:
     return Deck(
-        id=row["id"], name=row["name"], created_at=row["created_at"], deleted=bool(row["deleted"]), seq=row["seq"]
+        id=row["id"],
+        name=row["name"],
+        created_at=row["created_at"],
+        deleted=bool(row["deleted"]),
+        seq=row["seq"],
+        ephemeral=bool(row["ephemeral"]),
+        promote_to=row["promote_to"],
     )
 
 
@@ -42,13 +52,13 @@ def decks_changed_since(conn: sqlite3.Connection, seq: int) -> list[Deck]:
 
 def insert_deck(conn: sqlite3.Connection, deck: Deck) -> None:
     conn.execute(
-        "INSERT INTO decks (id, name, created_at, deleted, seq) VALUES (?, ?, ?, ?, ?)",
-        (deck.id, deck.name, deck.created_at, int(deck.deleted), deck.seq),
+        "INSERT INTO decks (id, name, created_at, deleted, seq, ephemeral, promote_to) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (deck.id, deck.name, deck.created_at, int(deck.deleted), deck.seq, int(deck.ephemeral), deck.promote_to),
     )
 
 
 def update_deck(conn: sqlite3.Connection, deck: Deck) -> None:
     conn.execute(
-        "UPDATE decks SET name = ?, deleted = ?, seq = ? WHERE id = ?",
-        (deck.name, int(deck.deleted), deck.seq, deck.id),
+        "UPDATE decks SET name = ?, deleted = ?, seq = ?, ephemeral = ?, promote_to = ? WHERE id = ?",
+        (deck.name, int(deck.deleted), deck.seq, int(deck.ephemeral), deck.promote_to, deck.id),
     )

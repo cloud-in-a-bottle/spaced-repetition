@@ -9,13 +9,14 @@ from litestar.logging import LoggingConfig
 from srs.api.bulk_import import bulk_import
 from srs.api.decks import deck_create
 from srs.api.decks import deck_delete
-from srs.api.decks import deck_rename
+from srs.api.decks import deck_update
 from srs.api.decks import decks_index
 from srs.api.errors import EXCEPTION_HANDLERS
 from srs.api.guards import owner_guard
 from srs.api.items import card_suspend
 from srs.api.items import item_create
 from srs.api.items import item_delete
+from srs.api.items import item_promote
 from srs.api.items import item_save
 from srs.api.items import item_show
 from srs.api.items import items_index
@@ -64,10 +65,11 @@ def create_app(config: Config) -> Litestar:
             item_create,
             item_save,
             item_delete,
+            item_promote,
             card_suspend,
             decks_index,
             deck_create,
-            deck_rename,
+            deck_update,
             deck_delete,
             templates_index,
             template_save,

@@ -11,6 +11,8 @@ from srs.repo.cards import card_from_row
 from srs.repo.changes import current_seq
 from srs.repo.decks import Deck
 from srs.repo.decks import decks_changed_since
+from srs.repo.items import get_item
+from srs.repo.items import main_twin
 from srs.repo.reviews import find_review
 from srs.repo.reviews import insert_review
 from srs.repo.settings import load_settings
@@ -50,6 +52,8 @@ class SyncCard:
     template_name: str
     # the item's part of speech; a form takes its lexeme's. None for phrases and facts.
     pos: str | None
+    # for review-set cards: the main deck holding this item (see main_twin), if any
+    main_deck_id: str | None
 
 
 @attr.s(auto_attribs=True, frozen=True)
@@ -60,16 +64,26 @@ class Changes:
     cards: list[SyncCard]
 
 
+def _main_deck_of(conn: sqlite3.Connection, item_id: str, cache: dict[str, str | None]) -> str | None:
+    if item_id not in cache:
+        twin = main_twin(conn, get_item(conn, item_id))
+        cache[item_id] = None if twin is None else twin.deck_id
+    return cache[item_id]
+
+
 def changes_since(conn: sqlite3.Connection, cursor: int) -> Changes:
     rows = conn.execute(
         "SELECT cards.*, items.deck_id AS item_deck_id, items.kind AS item_kind, templates.skill AS template_skill, "
-        "templates.name AS template_name, "
+        "templates.name AS template_name, decks.ephemeral AS item_ephemeral, "
         "COALESCE(json_extract(items.data, '$.pos'), json_extract(lexemes.data, '$.pos')) AS item_pos "
         "FROM cards JOIN items ON items.id = cards.item_id "
         "LEFT JOIN items AS lexemes ON lexemes.id = items.lexeme_id "
-        "JOIN templates ON templates.id = cards.template_id WHERE cards.seq > ? ORDER BY cards.seq",
+        "JOIN templates ON templates.id = cards.template_id "
+        "JOIN decks ON decks.id = items.deck_id "
+        "WHERE cards.seq > ? ORDER BY cards.seq",
         (cursor,),
     ).fetchall()
+    twins: dict[str, str | None] = {}
     cards = [
         SyncCard(
             card=card_from_row(r),
@@ -78,6 +92,7 @@ def changes_since(conn: sqlite3.Connection, cursor: int) -> Changes:
             skill=r["template_skill"],
             template_name=r["template_name"],
             pos=r["item_pos"],
+            main_deck_id=_main_deck_of(conn, r["item_id"], twins) if r["item_ephemeral"] else None,
         )
         for r in rows
     ]

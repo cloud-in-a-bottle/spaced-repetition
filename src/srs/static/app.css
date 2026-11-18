@@ -69,6 +69,12 @@ button.link { border: none; background: none; color: var(--accent); padding: 0 0
 .pos-toggle[aria-expanded="true"] .chevron { transform: rotate(45deg); }
 .deck-list li.deck-pos { padding: 0.45rem 0.2rem 0.45rem 1.4rem; font-size: 0.92rem; }
 .deck-list li.deck-pos .deck-name { color: var(--muted); }
+.section-title { font-size: 1rem; margin: 1.6rem 0 0.2rem; color: var(--muted); font-weight: 600; }
+.study-promote { display: flex; justify-content: flex-end; min-height: 1.6rem; font-size: 0.9rem; }
+.promoted { color: var(--good); }
+.promote .error { color: var(--again); margin-left: 0.5rem; }
+.promote .key-hint { margin-left: 0.4rem; }
+.deck-admin select { margin-left: 0.5rem; font-size: 0.85rem; }
 .counts { display: flex; gap: 0.8rem; font-variant-numeric: tabular-nums; min-width: 7rem; justify-content: flex-end; }
 .count-new { color: var(--easy); }
 .count-learning { color: var(--again); }

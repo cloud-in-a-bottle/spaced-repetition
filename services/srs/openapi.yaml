@@ -25,6 +25,9 @@ info:
     it). Scheduling uses FSRS, so each card has a *retrievability*: the predicted probability the owner recalls it
     right now.
 
+    Only the owner's main decks count. Items in *review sets* (throwaway decks for cramming, eg the words of one TV
+    episode) are left out until the owner adds them to a main deck.
+
     Words are matched case-insensitively (Unicode NFC + casefold) but accent-sensitively, against lexeme lemmas and
     form spellings, within one language. Language codes are whatever the owner entered; ISO 639-1 (`es`, `de`) is the
     convention.

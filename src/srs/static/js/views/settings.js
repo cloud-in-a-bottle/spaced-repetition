@@ -40,18 +40,39 @@ export async function settingsView() {
         alert(err.message);
       }
     };
+    const main = decks.filter((d) => !d.ephemeral);
+    const deleteMessage = (d) =>
+      d.ephemeral
+        ? `Delete the review set ${d.name} and all its items? Anything you added to a main deck stays there.`
+        : `Delete ${d.name}?`;
+    // "Add to main deck" target for a review set; blank = the main deck with most items in the word's language
+    const promoteSelect = (d) =>
+      h("select", { onchange: (e) => run(() => api("PUT", `/decks/${d.id}`, { name: d.name, promote_to: e.target.value || null })) },
+        h("option", { value: "" }, "add words to: (auto)"),
+        main.map((m) => h("option", { value: m.id, selected: m.id === d.promote_to }, `add words to: ${m.name}`)));
+    const row = (d) => h("li", {}, d.name,
+      h("button.link", { onclick: () => {
+        const name = prompt("Rename deck", d.name);
+        if (name) run(() => api("PUT", `/decks/${d.id}`, { name, promote_to: d.promote_to }));
+      } }, "rename"),
+      h("button.link", { onclick: () => confirm(deleteMessage(d)) && run(() => api("DELETE", `/decks/${d.id}`)) }, "delete"),
+      d.ephemeral ? promoteSelect(d) : null);
+    const reviewSets = decks.filter((d) => d.ephemeral);
     return h("section", {},
       h("h2", {}, "Decks"),
-      h("ul.deck-admin", {}, decks.map((d) => h("li", {}, d.name,
-        h("button.link", { onclick: () => {
-          const name = prompt("Rename deck", d.name);
-          if (name) run(() => api("PUT", `/decks/${d.id}`, { name }));
-        } }, "rename"),
-        h("button.link", { onclick: () => confirm(`Delete ${d.name}?`) && run(() => api("DELETE", `/decks/${d.id}`)) }, "delete")))),
+      h("ul.deck-admin", {}, main.map(row)),
       h("button", { onclick: () => {
         const name = prompt("New deck name");
         if (name) run(() => api("POST", "/decks", { name }));
       } }, "+ New deck"),
+      h("h2", {}, "Review sets"),
+      h("p.muted", {}, "Throwaway decks for cramming, eg the words of one episode. They don't count toward what you know, ",
+        "ignore the new-cards-per-day limit, and each card has a button to add it to a main deck."),
+      reviewSets.length ? h("ul.deck-admin", {}, reviewSets.map(row)) : null,
+      h("button", { onclick: () => {
+        const name = prompt("New review set name");
+        if (name) run(() => api("POST", "/decks", { name, ephemeral: true }));
+      } }, "+ New review set"),
     );
   }
 

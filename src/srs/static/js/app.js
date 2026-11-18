@@ -27,7 +27,7 @@ async function route() {
   for (const [pattern, view] of routes) {
     const match = hash.match(pattern);
     if (match) {
-      const result = await view(match.slice(1).map(decodeURIComponent));
+      const result = await view(match.slice(1).map((v) => (v === undefined ? undefined : decodeURIComponent(v))));
       cleanup = typeof result === "function" ? result : null;
       return;
     }

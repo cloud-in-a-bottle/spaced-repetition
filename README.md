@@ -16,6 +16,12 @@ does the owner know?").
   app; defaults are in `src/srs/render/default_templates.py`.
 - A **card** is one (item, template) pair. Its schedule is FSRS state.
 - **Reviews** are an append-only log, the source of truth for scheduling.
+- **Review sets** are throwaway decks for cramming (eg the words of one TV episode; `src/srs/core/review_sets.py`).
+  Their items stay out of the knowledge service, their new cards ignore the daily limit, and they're left out of
+  "All decks". Each card has an "add to main deck" button (`POST /api/items/{id}/promote`) that copies the item into
+  a main deck with the kind's usual cards, carrying over the reviews of the cards they share. The review-set item
+  stays, and shows as "in a main deck" once a main deck has it (or anything spelled the same). Deleting a review set
+  deletes its items; copies already added to a main deck stay.
 
 ## offline sync
 

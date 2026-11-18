@@ -78,6 +78,7 @@ class SyncCardView:
     kind: str
     skill: str
     pos: str | None
+    main_deck_id: str | None
     created_at: int
     suspended: bool
     deleted: bool
@@ -105,6 +106,7 @@ def sync_card_view(sc: SyncCard) -> SyncCardView:
         kind=sc.item_kind,
         skill=sc.skill,
         pos=sc.pos,
+        main_deck_id=sc.main_deck_id,
         created_at=c.created_at,
         suspended=c.suspended,
         deleted=c.deleted,

@@ -12,6 +12,7 @@ from srs.api.views import ItemView
 from srs.api.views import item_view
 from srs.core.items import delete_item
 from srs.core.items import save_item
+from srs.core.review_sets import promote_item
 from srs.domain.clock import now_ms
 from srs.domain.errors import InvalidRequest
 from srs.domain.item_input import ItemInput
@@ -77,3 +78,26 @@ def card_suspend(db: Db, card_id: FromPath[str], data: JSONBody[SuspendInput]) -
     with db.transaction() as conn:
         card = get_card(conn, card_id)
         upsert_card(conn, attr.evolve(card, suspended=data.suspended, seq=next_seq(conn)))
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class PromoteInput:
+    # the main deck to add it to; defaults to the review set's `promote_to`, else the main deck with most items in
+    # the item's language
+    deck_id: str | None = None
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class PromoteView:
+    item: ItemView
+    created: bool
+
+
+@post("/items/{item_id:str}/promote", sync_to_thread=True)
+def item_promote(db: Db, item_id: FromPath[str], data: JSONBody[PromoteInput]) -> PromoteView:
+    """Add a review-set item to a main deck (it stays in the review set too)."""
+    with db.transaction() as conn:
+        result = promote_item(conn, item_id, data.deck_id, next_seq(conn), now_ms())
+        return PromoteView(
+            item=item_view(result.item, cards_for_items(conn, [result.item.id])), created=result.created
+        )
