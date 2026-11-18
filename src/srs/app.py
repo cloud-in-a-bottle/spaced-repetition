@@ -36,6 +36,7 @@ from srs.api.reader import reading_words
 from srs.api.reader import text_create
 from srs.api.reader import text_delete
 from srs.api.reader import text_mark_read
+from srs.api.reader import text_progress
 from srs.api.reader import text_save
 from srs.api.schema import schema_show
 from srs.api.settings import settings_save
@@ -106,6 +107,7 @@ def create_app(config: Config) -> Litestar:
             text_save,
             text_delete,
             text_mark_read,
+            text_progress,
             reading_show,
             reading_statuses,
             reading_word,

@@ -51,7 +51,7 @@ export async function libraryView() {
                 h("span.text-pos", {}, t.position), " ", t.title),
               h("span.muted.text-meta", {},
                 `${t.words.toLocaleString()} words`, t.format === "subtitles" ? " · subtitles" : "",
-                t.read_at ? " · ✓ read" : ""))))
+                t.read_at ? " · ✓ read" : t.progress_block !== null ? ` · ${Math.round((100 * (t.progress_block + 1)) / t.blocks)}% read` : ""))))
         : h("p.muted", {}, "No texts yet."));
 
   mount(

@@ -32,6 +32,8 @@ class Text:
     created_at: int
     updated_at: int
     read_at: int | None
+    # furthest block read (see set_progress); None before any
+    progress_block: int | None = None
 
 
 def _course(row: sqlite3.Row) -> Course:
@@ -145,6 +147,15 @@ def _encode(blocks: list[Block]) -> str:
 def delete_text(conn: sqlite3.Connection, text_id: str) -> None:
     get_text(conn, text_id)
     conn.execute("DELETE FROM texts WHERE id = ?", (text_id,))
+
+
+def set_progress(conn: sqlite3.Connection, text_id: str, block: int, force: bool = False) -> int | None:
+    """Record reading up to `block`. Only moves forward unless `force` (eg to start over). Returns the new value."""
+    t = get_text(conn, text_id)
+    block = max(0, min(block, len(t.blocks) - 1))
+    new = block if force or t.progress_block is None else max(t.progress_block, block)
+    conn.execute("UPDATE texts SET progress_block = ? WHERE id = ?", (new, text_id))
+    return new
 
 
 def mark_read(conn: sqlite3.Connection, text_id: str, now: int | None) -> None:

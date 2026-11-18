@@ -46,6 +46,7 @@ export async function readerView(textId) {
   let words = reading.words;
   let selected = null; // {key, word, sentence, el}
   const spansByKey = new Map();
+  let progress = reading.progress_block; // furthest line read: where you last clicked a word furthest in
 
   // --- the text ---
 
@@ -146,8 +147,44 @@ export async function readerView(textId) {
     return span.closest(".block").querySelector(".block-text").textContent;
   }
 
+  // --- where you've read to ---
+
+  const blockEls = () => document.querySelectorAll(".reader-text .block");
+  const progressLink = h("div.reader-progress.small");
+
+  function renderProgress() {
+    for (const el of document.querySelectorAll(".block.progress-mark")) el.classList.remove("progress-mark");
+    if (progress === null) {
+      progressLink.replaceChildren();
+      return;
+    }
+    blockEls()[progress]?.classList.add("progress-mark");
+    const pct = Math.round((100 * (progress + 1)) / reading.blocks.length);
+    progressLink.replaceChildren(
+      h("a", { href: "#", onclick: (e) => { e.preventDefault(); jumpToProgress(); } }, "Jump to where you left off"),
+      h("span.muted", {}, ` · line ${progress + 1} of ${reading.blocks.length} (${pct}%) · `),
+      h("button.link", { onclick: () => saveProgress(0, true), title: "Move your place back to the start" }, "start over"),
+    );
+  }
+
+  function jumpToProgress() {
+    const el = blockEls()[progress];
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("flash");
+    setTimeout(() => el.classList.remove("flash"), 1500);
+  }
+
+  function saveProgress(block, force = false) {
+    if (!force && progress !== null && block <= progress) return;
+    progress = block;
+    renderProgress();
+    api("PUT", `/library/texts/${textId}/progress`, { block, force }).catch(() => {});
+  }
+
   function select(span) {
     for (const s of document.querySelectorAll(".w.selected")) s.classList.remove("selected");
+    saveProgress(Number(span.closest(".block").dataset.i));
     const key = span.dataset.key;
     selected = { key, word: span.textContent, sentence: sentenceAround(span) };
     for (const s of spansByKey.get(key)) s.classList.add("selected");
@@ -361,6 +398,7 @@ export async function readerView(textId) {
           h("div.muted.small", {}, h("a", { href: "#/read" }, "Library"), " › ", reading.course_title),
           h("h1", {}, reading.title),
           stats,
+          progressLink,
           reading.dictionary ? null : h("p.muted.small", {}, "Tip: install the offline dictionary (Settings → Dictionaries) so inflected words are matched to your deck and get definitions.")),
         h(`div.reader-text${reading.format === "subtitles" ? ".subtitles" : ""}`, { onclick: closePanel }, body),
         h("div.reader-foot", {},
@@ -373,6 +411,7 @@ export async function readerView(textId) {
     ),
   );
   renderStats();
+  renderProgress();
 
   return () => {
     document.removeEventListener("keydown", onKey);

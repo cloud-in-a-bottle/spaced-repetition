@@ -150,6 +150,11 @@ body.reading main { max-width: 76rem; }
 .reader-stats { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); }
 .legend-chip { padding: 0 0.4rem; border-radius: 0.3rem; color: var(--fg); }
 .reader-text { font-size: 1.15rem; line-height: 1.8; margin: 1.2rem 0; }
+.reader-progress { margin-top: 0.4rem; }
+.reader-progress:empty { display: none; }
+.block.progress-mark { box-shadow: -10px 0 0 -7px var(--accent); }
+.block.flash { animation: flash 1.5s ease-out; }
+@keyframes flash { from { background: var(--hl-selected); } to { background: transparent; } }
 .block { position: relative; padding: 0.15rem 2rem 0.15rem 0; }
 .block-text { margin: 0 0 0.6rem; white-space: pre-line; }
 .subtitles .block { display: grid; grid-template-columns: 3rem minmax(0, 1fr); column-gap: 0.6rem; }

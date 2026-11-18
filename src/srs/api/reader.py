@@ -41,6 +41,8 @@ class TextSummary:
     blocks: int
     words: int
     read_at: int | None
+    # furthest block read, or None
+    progress_block: int | None
 
 
 @attr.s(auto_attribs=True, frozen=True)
@@ -62,6 +64,7 @@ def _summary(t: library.Text) -> TextSummary:
         blocks=len(t.blocks),
         words=words,
         read_at=t.read_at,
+        progress_block=t.progress_block,
     )
 
 
@@ -151,6 +154,24 @@ class ReadInput:
     read: bool
 
 
+@attr.s(auto_attribs=True, frozen=True)
+class ProgressInput:
+    block: int
+    # move back too (normally progress only moves forward)
+    force: bool = False
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class ProgressView:
+    progress_block: int | None
+
+
+@put("/library/texts/{text_id:str}/progress", sync_to_thread=True)
+def text_progress(db: Db, text_id: FromPath[str], data: JSONBody[ProgressInput]) -> ProgressView:
+    with db.transaction() as conn:
+        return ProgressView(progress_block=library.set_progress(conn, text_id, data.block, data.force))
+
+
 @put("/library/texts/{text_id:str}/read", sync_to_thread=True)
 def text_mark_read(db: Db, text_id: FromPath[str], data: JSONBody[ReadInput]) -> None:
     with db.transaction() as conn:
@@ -185,6 +206,8 @@ class Reading:
     # where "add to deck" puts words by default
     default_deck_id: str | None
     dictionary: bool
+    # furthest block read, or None
+    progress_block: int | None
 
 
 @get("/reader/texts/{text_id:str}", sync_to_thread=True)
@@ -216,6 +239,7 @@ def reading_show(db: Db, dicts: Dicts, text_id: FromPath[str]) -> Reading:
             words=words,
             default_deck_id=largest_main_deck(conn, course.language),
             dictionary=dictionary is not None,
+            progress_block=t.progress_block,
         )
 
 

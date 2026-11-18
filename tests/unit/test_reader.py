@@ -289,3 +289,16 @@ def test_a_word_with_two_roots_lets_you_pick(client: TestClient, deck_id: str) -
     client.put("/api/reader/marks", json={"language": "es", "words": ["lista"], "status": "known", "roots": ["listo"]})
     r = client.post("/api/reader/statuses", json={"language": "es", "words": ["lista", "listo", "listar"]}).json()
     assert r == {"lista": "known", "listo": "known", "listar": "new"}
+
+
+def test_reading_progress_only_moves_forward(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    text_id = _episode(client)
+    assert client.get(f"/api/reader/texts/{text_id}").json()["progress_block"] is None
+    progress = lambda block, force=False: client.put(  # noqa: E731
+        f"/api/library/texts/{text_id}/progress", json={"block": block, "force": force}
+    ).json()["progress_block"]
+    assert progress(1) == 1
+    assert progress(0) == 1  # going back to reread doesn't lose your place
+    assert progress(99) == 1  # clamped to the last block
+    assert progress(0, force=True) == 0
+    assert client.get("/api/library").json()[0]["texts"][0]["progress_block"] == 0
