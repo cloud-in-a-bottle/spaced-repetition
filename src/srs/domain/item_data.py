@@ -28,6 +28,9 @@ class FormData:
     notes: str = ""
     # other correct forms for the same features, eg the -se subjunctive "hablase" alongside "hablara"
     alternatives: list[str] = attr.Factory(list)
+    # optional sentence cue for the conjugation card, with ___ where the form goes, eg
+    # "→ En el futuro, →\nnosotros ___ (pasteles)"; without one, the card shows the features instead
+    prompt: str = ""
 
 
 @attr.s(auto_attribs=True, frozen=True)

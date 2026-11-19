@@ -106,3 +106,24 @@ def item_promote(db: Db, item_id: FromPath[str], data: JSONBody[PromoteInput]) -
         return PromoteView(
             item=item_view(result.item, cards_for_items(conn, [result.item.id])), created=result.created
         )
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class BatchResult:
+    saved: int
+
+
+@post("/items/batch", sync_to_thread=True)
+def items_batch_save(db: Db, data: JSONBody[list[ItemInput]]) -> BatchResult:
+    """Create-or-replace many items (each with its `id`) in one transaction. Like PUT /items/{id}: leaving out
+    `template_ids` keeps an item's cards, schedules and suspensions as they are. For scripted edits."""
+    if any(i.id is None for i in data):
+        raise InvalidRequest("every item needs an `id`")
+    if len(data) > 5000:
+        raise InvalidRequest("at most 5000 items per batch")
+    with db.transaction() as conn:
+        seq = next_seq(conn)
+        now = now_ms()
+        for item in sorted(data, key=lambda i: i.kind != ItemKind.LEXEME):  # lexemes before their forms
+            save_item(conn, item, seq, now)
+    return BatchResult(saved=len(data))

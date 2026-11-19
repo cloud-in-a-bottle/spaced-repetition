@@ -20,6 +20,7 @@ from srs.api.items import item_delete
 from srs.api.items import item_promote
 from srs.api.items import item_save
 from srs.api.items import item_show
+from srs.api.items import items_batch_save
 from srs.api.items import items_index
 from srs.api.reader import course_create
 from srs.api.reader import course_delete
@@ -87,6 +88,7 @@ def create_app(config: Config) -> Litestar:
             items_index,
             item_show,
             item_create,
+            items_batch_save,
             item_save,
             item_delete,
             item_promote,

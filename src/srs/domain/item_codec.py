@@ -46,6 +46,7 @@ def decode_item_data(kind: ItemKind, raw: str) -> ItemData:
                 gloss=d["gloss"],
                 notes=d["notes"],
                 alternatives=d.get("alternatives", []),
+                prompt=d.get("prompt", ""),
             )
         case ItemKind.PHRASE:
             return PhraseData(

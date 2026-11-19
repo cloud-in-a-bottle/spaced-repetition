@@ -114,3 +114,38 @@ def test_items_are_paged(client: TestClient, deck_id: str) -> None:  # type: ign
     assert {i["lexeme"]["lemma"] for i in first + rest} == {"uno", "dos", "tres"}
     assert [i["lexeme"]["lemma"] for i in client.get("/api/items", params={"q": "dos"}).json()] == ["dos"]
     assert client.get("/api/items", params={"limit": 0}).status_code == 400
+
+
+def test_conjugation_card_with_a_prompt_is_a_cloze(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    lx = add_lexeme(client, deck_id, "hacer", "to do")
+    r = client.post(
+        "/api/items",
+        json={
+            "deck_id": deck_id,
+            "kind": "form",
+            "form": {
+                "lexeme_id": lx["id"],
+                "form": "haremos",
+                "features": {"tense": "future", "person": "1st"},
+                "prompt": "→ En el futuro, →\nnosotros ___ (pasteles) <b>",
+            },
+        },
+    )
+    assert r.status_code == 201, r.text
+    card = next(c for c in sync(client)["cards"] if c["item_id"] == r.json()["id"])
+    assert '<span class="cloze">…hacer…</span>' in card["front_html"]
+    assert "→ En el futuro, →<br>nosotros" in card["front_html"]
+    assert '<span class="aside">(pasteles)</span>' in card["front_html"]
+    assert "&lt;b&gt;" in card["front_html"]  # prompt text is escaped
+    assert "haremos" not in card["front_html"]
+    assert '<span class="cloze answer">haremos</span>' in card["back_html"]
+
+
+def test_batch_save_keeps_cards(client: TestClient, deck_id: str) -> None:  # type: ignore[type-arg]
+    lx = add_lexeme(client, deck_id, "hablar", "to speak")
+    card_ids = {c["id"] for c in lx["cards"]}
+    body = {k: lx[k] for k in ("id", "deck_id", "kind", "language", "tags", "lexeme")}
+    body["lexeme"] = {**lx["lexeme"], "gloss": "to talk"}
+    assert client.post("/api/items/batch", json=[body]).json() == {"saved": 1}
+    item = client.get(f"/api/items/{lx['id']}").json()
+    assert item["lexeme"]["gloss"] == "to talk" and {c["id"] for c in item["cards"]} == card_ids

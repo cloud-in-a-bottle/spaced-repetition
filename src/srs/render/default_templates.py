@@ -11,6 +11,9 @@ BASE_CSS = """
 .notes { color: #888; font-size: 1rem; margin-top: 1rem; white-space: pre-wrap; }
 .prewrap { white-space: pre-wrap; text-align: left; }
 hr { border: none; border-top: 1px solid #8884; margin: 1rem 0; }
+.prompt { font-size: 1.3rem; line-height: 1.7; }
+.cloze { color: rgb(210, 142, 2); font-weight: 600; }
+.aside { color: #888; }
 """
 
 
@@ -29,6 +32,20 @@ _NOTES = '{% if notes %}<div class="notes">{{ notes }}</div>{% endif %}'
 # eg "la casa": shows the article for languages where it carries the gender
 _LEMMA = "{% if features.get('article') %}{{ features.article }} {% endif %}{{ lemma }}"
 _ALTERNATIVES = '{% if alternatives %}<div class="hint">also: {{ alternatives|join(", ") }}</div>{% endif %}'
+
+FORM_PRODUCE_FRONT = (
+    '{% if prompt %}<div class="prompt" lang="{{ language }}">{{ prompt|cloze("…" ~ lexeme.lemma ~ "…") }}</div>'
+    '{% else %}<div class="term" lang="{{ language }}">{{ lexeme.lemma }}</div>'
+    '<div class="hint">{{ features|features }}</div>{% endif %}'
+)
+FORM_PRODUCE_BACK = (
+    '{% if prompt %}<div class="prompt" lang="{{ language }}">{{ prompt|cloze(form, "cloze answer") }}</div>'
+    '<div class="hint">{{ features|features }}</div>'
+    '{% else %}{{ front_side }}<hr><div class="term" lang="{{ language }}">{{ form }}</div>{% endif %}'
+    + _ALTERNATIVES
+    + '{% if gloss %}<div class="answer">{{ gloss }}</div>{% endif %}'
+    + _NOTES
+)
 
 DEFAULT_TEMPLATES: tuple[DefaultTemplate, ...] = (
     DefaultTemplate(
@@ -60,12 +77,9 @@ DEFAULT_TEMPLATES: tuple[DefaultTemplate, ...] = (
         name="Conjugate / inflect",
         kind=ItemKind.FORM,
         skill=Skill.PRODUCE,
-        front='<div class="term" lang="{{ language }}">{{ lexeme.lemma }}</div>'
-        '<div class="hint">{{ features|features }}</div>',
-        back='{{ front_side }}<hr><div class="term" lang="{{ language }}">{{ form }}</div>'
-        + _ALTERNATIVES
-        + '{% if gloss %}<div class="answer">{{ gloss }}</div>{% endif %}'
-        + _NOTES,
+        # with a sentence prompt (eg imported from anki's KOFI deck) the card is a cloze; otherwise lemma + features
+        front=FORM_PRODUCE_FRONT,
+        back=FORM_PRODUCE_BACK,
         default_enabled=True,
     ),
     DefaultTemplate(

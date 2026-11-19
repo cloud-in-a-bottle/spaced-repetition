@@ -1,5 +1,6 @@
 """The 'Ultimate Spanish Conjugation' (KOFI) deck and the small hand-made 'conjugated verbs' deck -> form items."""
 
+import html
 import re
 
 import attr
@@ -120,6 +121,18 @@ def _parse_kofi(note: AnkiNote) -> _Parsed | str:
     return _Parsed(infinitive=infinitive, key=key, features=features, forms=forms)
 
 
+_ANY_CLOZE = re.compile(r"\{\{c\d+::.*?\}\}", re.DOTALL)
+
+
+def kofi_prompt(prompt_html: str) -> str:
+    """KOFI's cloze prompt as plain text with ___ for the blank, eg "→ En el futuro, →\nnosotros ___ (pasteles)"."""
+    text = _ANY_CLOZE.sub("___", prompt_html)
+    text = re.sub(r"<br\s*/?>", "\n", text)
+    text = html.unescape(re.sub(r"<[^>]+>", "", text))
+    lines = [re.sub(r"[ \t]+", " ", ln).strip() for ln in text.split("\n")]
+    return "\n".join(ln for ln in lines if ln)
+
+
 def _form_data(parsed: _Parsed, note: AnkiNote) -> JsonDict:
     alternatives = parsed.forms[1:]
     m = _CLITIC.match(parsed.forms[0])
@@ -133,6 +146,7 @@ def _form_data(parsed: _Parsed, note: AnkiNote) -> JsonDict:
         "gloss": "",
         "notes": clean(note.fields.get("Notes", "")),
         "alternatives": list(dict.fromkeys(alternatives)),
+        "prompt": kofi_prompt(note.fields["Prompt"]),
     }
 
 
