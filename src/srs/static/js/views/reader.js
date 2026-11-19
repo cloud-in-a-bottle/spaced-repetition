@@ -61,6 +61,7 @@ export async function readerView(textId) {
   let words = reading.words;
   let selected = null; // {key, word, sentence, el}
   const spansByKey = new Map();
+  let currentDetails = null; // the open panel's word details
   let progress = reading.progress_block; // furthest line read: where you last clicked a word furthest in
 
   // --- the text ---
@@ -154,18 +155,39 @@ export async function readerView(textId) {
   // What the server would do with a mark, done locally while offline (using the downloaded word details).
   function applyMarkLocally(key, status, roots) {
     const details = bundle?.details ?? {};
-    const d = details[key];
+    const d = details[key] ?? (currentDetails?.key === key ? currentDetails : undefined);
     if (status === "ignored") {
       words[key] = "ignored";
     } else if (status === "known") {
       const targets = new Set(roots ?? (d && d.roots[0] !== key ? d.roots : [key]));
+      targets.add(key); // the word itself, whichever of its roots gets the mark
       for (const [k, st] of Object.entries(words)) {
         if (st === "new" && (targets.has(k) || (details[k]?.roots ?? []).some((r) => targets.has(r)))) words[k] = "known";
       }
     } else if (words[key] === "known" || words[key] === "ignored") {
       words[key] = "new";
     }
-    if (d) details[key] = { ...d, status: words[key], mark: status, mark_root: null };
+    if (d && details[key]) details[key] = { ...d, status: words[key], mark: status, mark_root: null };
+  }
+
+  // --- panel actions: close the panel and update the page at once; save and refresh from the server after ---
+
+  const toastEl = h("div.toast", { hidden: true });
+  let toastTimer = null;
+  function toast(message) {
+    toastEl.textContent = message;
+    toastEl.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (toastEl.hidden = true), 4000);
+  }
+
+  function afterAction(work) {
+    closePanel();
+    applyStatuses();
+    saveLocalCopy();
+    work()
+      .then(() => refreshWords())
+      .catch((err) => toast(`Couldn't save that: ${err.message}`));
   }
 
   async function markAllNewKnown() {
@@ -283,11 +305,10 @@ export async function readerView(textId) {
   }
 
   // "known" goes on the word's root(s) (all its forms count, like cards); `roots` picks one when there are several
-  async function setMark(status, roots = null) {
-    const sent = await apiOrQueue("PUT", "/reader/marks", { language: reading.language, words: [selected.key], status, roots });
-    if (sent === undefined) applyMarkLocally(selected.key, status, roots);
-    await refreshWords();
-    showPanel();
+  function setMark(status, roots = null) {
+    const key = selected.key;
+    applyMarkLocally(key, status, roots);
+    afterAction(() => apiOrQueue("PUT", "/reader/marks", { language: reading.language, words: [key], status, roots }));
   }
 
   function dictionarySection(d) {
@@ -327,30 +348,28 @@ export async function readerView(textId) {
     await sync();
   }
 
-  async function markReviewed(m, button) {
-    button.disabled = true;
-    button.textContent = "Recording…";
-    try {
+  function markReviewed(m) {
+    const key = selected.key;
+    afterAction(async () => {
       let card = await readingCard(m.item_id);
       if (!card) {
         const ok = confirm(`${m.lemma} has no cards of its own yet (only its conjugations, if any). ` +
           "Add a word → meaning card for it and record this review?");
-        if (!ok) {
-          button.disabled = false;
-          button.textContent = "Mark as reviewed";
-          return;
-        }
+        if (!ok) return;
         await addRecognitionCard(m.item_id);
         card = await readingCard(m.item_id);
-        if (!card) throw new Error("the card didn't arrive; try again");
+        if (!card) throw new Error("the new card didn't arrive; try again");
       }
-      await recordReview(card, 3, 0);
-      await sync();
-      await refreshWords();
-      showPanel();
-    } catch (err) {
-      button.textContent = navigator.onLine ? `Couldn't record it: ${err.message}` : "Recorded; will sync when online";
-    }
+      const updated = await recordReview(card, 3, 0);
+      // a card back in long-term review is well recalled again; new and learning cards stay highlighted
+      if (updated.state === "review") {
+        words[key] = "known";
+        applyStatuses();
+      }
+      await sync().catch((err) => {
+        if (!isNetworkError(err)) throw err;
+      });
+    });
   }
 
   function deckSection(d) {
@@ -369,7 +388,7 @@ export async function readerView(textId) {
             h("a", { href: `#/items/${m.item_id}` }, "edit")),
           m.status === "learning"
             ? h("button.small.mark-reviewed", { title: "Record a successful review (Good) of this word's recognition card",
-                onclick: (e) => markReviewed(m, e.currentTarget) }, "Mark as reviewed")
+                onclick: () => markReviewed(m) }, "Mark as reviewed")
             : null)));
   }
 
@@ -390,24 +409,17 @@ export async function readerView(textId) {
       const features = form.pos === "noun" && form.gender
         ? { gender: form.gender, article: form.gender === "feminine" ? "la" : "el" }
         : {};
-      try {
-        const sent = await apiOrQueue("POST", "/items", {
-          deck_id: form.deck, kind: "lexeme", language: reading.language, tags: [],
-          lexeme: { lemma: form.lemma.trim(), pos: form.pos, gloss: form.gloss.trim(), features,
-            notes: `From ${reading.course_title}: ${reading.title}\n“${selected.sentence.trim()}”` },
-        });
-        if (sent === undefined) {
-          words[selected.key] = "learning";
-          await refreshWords();
-          status.textContent = "Saved offline; it'll be added to the deck when you're back online.";
-          return;
-        }
-        sync().catch(() => {});
-        await refreshWords();
-        showPanel();
-      } catch (err) {
-        status.textContent = err.message;
-      }
+      const body = {
+        deck_id: form.deck, kind: "lexeme", language: reading.language, tags: [],
+        lexeme: { lemma: form.lemma.trim(), pos: form.pos, gloss: form.gloss.trim(), features,
+          notes: `From ${reading.course_title}: ${reading.title}\n“${selected.sentence.trim()}”` },
+      };
+      words[selected.key] = "learning";
+      afterAction(async () => {
+        const sent = await apiOrQueue("POST", "/items", body);
+        if (sent === undefined) toast("Saved offline; it'll be added to the deck when you're back online.");
+        else sync().catch(() => {});
+      });
     }
     return h("form.add-form", { onsubmit: add },
       h("div.add-row", {},
@@ -452,6 +464,7 @@ export async function readerView(textId) {
       d = { ...saved, word: current.word, status: words[current.key] ?? saved.status };
     }
     if (selected !== current) return;
+    currentDetails = d;
     const translation = h("div.panel-translation");
     const inDeck = d.deck.length > 0;
     const external = (EXTERNAL[reading.language] ?? (() => []))(current.word);
@@ -507,6 +520,7 @@ export async function readerView(textId) {
             reading.previous_id ? h("a", { href: `#/read/${reading.previous_id}` }, "← Previous") : null,
             reading.next_id ? h("a", { href: `#/read/${reading.next_id}` }, "Next →") : null))),
       panel,
+      toastEl,
     ),
   );
   renderStats();
