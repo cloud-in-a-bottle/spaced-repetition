@@ -11,6 +11,8 @@ BASE_CSS = """
 .notes { color: #888; font-size: 1rem; margin-top: 1rem; white-space: pre-wrap; }
 .prewrap { white-space: pre-wrap; text-align: left; }
 hr { border: none; border-top: 1px solid #8884; margin: 1rem 0; }
+/* word cards: the word and its meaning the same size, whichever side asks */
+.kind-lexeme .term, .kind-lexeme .answer { font-size: 2rem; line-height: 1.3; }
 .prompt { font-size: 1.3rem; line-height: 1.7; }
 .cloze { color: rgb(210, 142, 2); font-weight: 600; }
 .aside { color: #888; }
